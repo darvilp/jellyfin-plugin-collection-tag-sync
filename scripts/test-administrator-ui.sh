@@ -35,6 +35,8 @@ configuration_page="$(curl --fail --silent --get \
     --data-urlencode 'name=Collection Tag Sync' \
     "${server_url}/web/ConfigurationPage")"
 if [[ "${configuration_page}" != *'data-controller="__plugin/Collection Tag Sync.js"'* \
+    || "${configuration_page}" != *'id="collectionTagSyncReconciliationSafety"'* \
+    || "${configuration_page}" != *'id="collectionTagSyncAdvancedSafety"'* \
     || "${configuration_page}" != *'id="collectionTagSyncMappings"'* \
     || "${configuration_page}" != *'id="collectionTagSyncRunOnce"'* \
     || "${configuration_page}" != *'id="collectionTagSyncFullReconcile"'* \
