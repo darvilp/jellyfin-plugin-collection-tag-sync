@@ -88,6 +88,7 @@ bash scripts/install-local-plugin.sh
 bash scripts/test-event-observation.sh
 bash scripts/test-jellyfin-contracts.sh
 bash scripts/test-walking-slice.sh
+bash scripts/test-continuous-adapters.sh
 bash scripts/test-manifest-install.sh
 ```
 

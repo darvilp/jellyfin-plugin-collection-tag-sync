@@ -1,4 +1,3 @@
-using System;
 using Jellyfin.Plugin.CollectionTagSync.Configuration;
 using Xunit;
 
@@ -15,13 +14,10 @@ public sealed class PluginConfigurationContractTests
     }
 
     [Fact]
-    public void WalkingSliceStartsDisabledAndUnbound()
+    public void ContinuousMappingsStartEmpty()
     {
         var configuration = new PluginConfiguration();
 
-        Assert.False(configuration.WalkingSliceEnabled);
-        Assert.Equal(string.Empty, configuration.WalkingSliceSourceTag);
-        Assert.Equal(Guid.Empty, configuration.WalkingSliceTargetCollectionId);
-        Assert.Equal(string.Empty, configuration.WalkingSliceTargetCollectionName);
+        Assert.Empty(configuration.MappingGroups);
     }
 }
