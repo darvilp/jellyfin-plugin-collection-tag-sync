@@ -13,4 +13,6 @@ category: "General"
 artifacts:
   - "Jellyfin.Plugin.CollectionTagSync.dll"
 changelog: >
-  Initial development build.
+  Initial alpha release with continuous and Full Reconcile mappings,
+  destructive-change safeguards, run-once operations, GUID-backed collection
+  selection and creation, and an embedded administrator UI.

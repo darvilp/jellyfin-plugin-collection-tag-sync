@@ -4,11 +4,12 @@ set -euo pipefail
 
 script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 project_root="$(cd -- "${script_dir}/.." && pwd)"
+plugin_version="$("${script_dir}/read-build-metadata.sh" version)"
 server_url="http://127.0.0.1:18096"
 token_file="${project_root}/.testenv/jellyfin/access-token"
 plugin_id="04920eee-c499-4b13-890f-7af0175f28f0"
 activation_url="${server_url}/CollectionTagSync/Configuration"
-plugin_directory="${project_root}/.testenv/jellyfin/config/plugins/Collection Tag Sync_0.1.0.0"
+plugin_directory="${project_root}/.testenv/jellyfin/config/plugins/Collection Tag Sync_${plugin_version}"
 plugin_dll="${plugin_directory}/Jellyfin.Plugin.CollectionTagSync.dll"
 disabled_dll="${project_root}/.testenv/jellyfin/Jellyfin.Plugin.CollectionTagSync.disabled"
 

@@ -6,6 +6,8 @@ script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 project_root="$(cd -- "${script_dir}/.." && pwd)"
 jprm_environment="${project_root}/.testenv/jprm"
 jprm_commit="9497a0a499416cc572ed2e07a391d9f943a37b4d"
+plugin_version="$("${script_dir}/read-build-metadata.sh" version)"
+plugin_framework="$("${script_dir}/read-build-metadata.sh" framework)"
 
 if [[ ! -x "${jprm_environment}/bin/jprm" ]]; then
     python3 -m venv "${jprm_environment}"
@@ -25,9 +27,9 @@ artifact_path="$({
         --verbosity=info \
         plugin build "${project_root}" \
         --output "${project_root}/artifacts" \
-        --version "0.1.0.0" \
+        --version "${plugin_version}" \
         --dotnet-configuration Release \
-        --dotnet-framework net9.0 \
+        --dotnet-framework "${plugin_framework}" \
         --max-cpu-count 1
 } 2>&1 | tee /dev/stderr | tail -n 1)"
 

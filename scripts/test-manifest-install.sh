@@ -6,8 +6,10 @@ script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 project_root="$(cd -- "${script_dir}/.." && pwd)"
 server_url="http://127.0.0.1:18096"
 token_file="${project_root}/.testenv/jellyfin/access-token"
-jprm="${project_root}/.testenv/jprm/bin/jprm"
-artifact="${project_root}/artifacts/collection-tag-sync_0.1.0.0.zip"
+jprm="${JPRM_BIN:-${project_root}/.testenv/jprm/bin/jprm}"
+plugin_version="$("${script_dir}/read-build-metadata.sh" version)"
+target_abi="$("${script_dir}/read-build-metadata.sh" targetAbi)"
+artifact="${1:-${project_root}/artifacts/collection-tag-sync_${plugin_version}.zip}"
 plugin_id="04920eee-c499-4b13-890f-7af0175f28f0"
 manifest_port="18097"
 container_gateway="$(docker inspect collection-tag-sync-jellyfin --format '{{range .NetworkSettings.Networks}}{{.Gateway}}{{end}}')"
@@ -84,14 +86,35 @@ curl --fail --silent --request POST \
 packages="$(curl --fail --silent \
     --header "X-Emby-Token: ${access_token}" \
     "${server_url}/Packages")"
-jq --exit-status --arg plugin_id "${plugin_id}" \
-    'any(.[]; ((.guid | ascii_downcase | gsub("-"; "")) == ($plugin_id | gsub("-"; ""))) and any(.versions[]; .version == "0.1.0.0" and .targetAbi == "10.11.11.0"))' \
+jq --exit-status \
+    --arg plugin_id "${plugin_id}" \
+    --arg version "${plugin_version}" \
+    --arg target_abi "${target_abi}" \
+    'any(.[];
+      ((.guid | ascii_downcase | gsub("-"; "")) == ($plugin_id | gsub("-"; "")))
+      and any(.versions[]; .version == $version and .targetAbi == $target_abi))' \
     <<<"${packages}" >/dev/null
+
+plugins_before="$(curl --fail --silent \
+    --header "X-Emby-Token: ${access_token}" \
+    "${server_url}/Plugins")"
+if jq --exit-status \
+    --arg plugin_id "${plugin_id}" \
+    --arg version "${plugin_version}" \
+    'any(.[];
+      ((.Id | ascii_downcase | gsub("-"; "")) == ($plugin_id | gsub("-"; "")))
+      and .Version == $version
+      and .Status == "Active")' \
+    <<<"${plugins_before}" >/dev/null; then
+    printf 'Cannot prove clean catalog installation: Collection Tag Sync %s is already active.\n' \
+        "${plugin_version}" >&2
+    exit 4
+fi
 
 curl --fail --silent --get --request POST \
     --header "X-Emby-Token: ${access_token}" \
     --data-urlencode "assemblyGuid=${plugin_id}" \
-    --data-urlencode 'version=0.1.0.0' \
+    --data-urlencode "version=${plugin_version}" \
     --data-urlencode "repositoryUrl=${manifest_url}" \
     "${server_url}/Packages/Installed/Collection%20Tag%20Sync"
 
@@ -113,8 +136,14 @@ fi
 plugins="$(curl --fail --silent \
     --header "X-Emby-Token: ${access_token}" \
     "${server_url}/Plugins")"
-jq --exit-status --arg plugin_id "${plugin_id}" \
-    'any(.[]; ((.Id | ascii_downcase | gsub("-"; "")) == ($plugin_id | gsub("-"; ""))) and .Version == "0.1.0.0" and .Status == "Active")' \
+jq --exit-status \
+    --arg plugin_id "${plugin_id}" \
+    --arg version "${plugin_version}" \
+    'any(.[];
+      ((.Id | ascii_downcase | gsub("-"; "")) == ($plugin_id | gsub("-"; "")))
+      and .Version == $version
+      and .Status == "Active")' \
     <<<"${plugins}" >/dev/null
 
-printf 'Loaded Collection Tag Sync 0.1.0.0 from temporary manifest %s.\n' "${manifest_url}"
+printf 'Loaded Collection Tag Sync %s from temporary manifest %s.\n' \
+    "${plugin_version}" "${manifest_url}"

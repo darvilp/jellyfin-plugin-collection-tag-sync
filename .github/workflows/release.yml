@@ -1,0 +1,393 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*.*.*.*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing four-component release tag to validate without publishing
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: collection-tag-sync-release
+  cancel-in-progress: false
+
+env:
+  JPRM_COMMIT: 9497a0a499416cc572ed2e07a391d9f943a37b4d
+  RELEASE_TAG: ${{ github.event_name == 'push' && github.ref_name || inputs.tag }}
+  SOURCE_REF: ${{ github.event_name == 'push' && github.sha || format('refs/tags/{0}', inputs.tag) }}
+
+jobs:
+  build:
+    name: Build exact tag
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    outputs:
+      source-commit: ${{ steps.source.outputs.commit }}
+    steps:
+      - name: Check out exact release tag
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+          ref: ${{ env.SOURCE_REF }}
+
+      - name: Verify exact clean tag checkout
+        id: source
+        run: |
+          tag_ref="refs/tags/${RELEASE_TAG}"
+          git show-ref --verify "${tag_ref}"
+          source_commit="$(git rev-parse HEAD)"
+          test "${source_commit}" = "$(git rev-parse "${tag_ref}^{commit}")"
+          if [[ "${GITHUB_EVENT_NAME}" == "push" ]]; then
+            test "${source_commit}" = "$(git rev-parse "${GITHUB_SHA}^{commit}")"
+          fi
+          test -z "$(git status --porcelain)"
+          mkdir -p release-bundle
+          printf '%s\n' "${source_commit}" >release-bundle/source-commit.txt
+          printf 'commit=%s\n' "${source_commit}" >>"${GITHUB_OUTPUT}"
+
+      - name: Set up .NET 9
+        uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+        with:
+          global-json-file: global.json
+
+      - name: Restore
+        run: dotnet restore Jellyfin.Plugin.CollectionTagSync.sln
+
+      - name: Build
+        run: dotnet build Jellyfin.Plugin.CollectionTagSync.sln --configuration Release --no-restore
+
+      - name: Test
+        run: |
+          dotnet test Jellyfin.Plugin.CollectionTagSync.sln --configuration Release --no-build --no-restore --verbosity normal
+          node --check --experimental-default-type=module Jellyfin.Plugin.CollectionTagSync/Configuration/configPage.js
+          node --test --experimental-default-type=module tests/ui/configPage.test.js
+          tests/release/release-tooling.test.sh
+
+      - name: Build plugin package
+        id: package
+        uses: oddstr13/jellyfin-plugin-repository-manager@9497a0a499416cc572ed2e07a391d9f943a37b4d # v1.1.1
+        with:
+          dotnet-target: net9.0
+
+      - name: Prepare immutable assets
+        id: assets
+        run: |
+          mkdir -p release-bundle/release-assets
+          release_package="$(scripts/prepare-release-assets.sh \
+            "${RELEASE_TAG}" \
+            "${{ steps.package.outputs.artifact }}" \
+            release-bundle/release-assets | tail -n 1)"
+          asset_name="$(basename -- "${release_package}")"
+          asset_url="https://github.com/${GITHUB_REPOSITORY}/releases/download/${RELEASE_TAG}/${asset_name}"
+          {
+            printf 'package=%s\n' "${release_package}"
+            printf 'asset-name=%s\n' "${asset_name}"
+            printf 'asset-url=%s\n' "${asset_url}"
+          } >>"${GITHUB_OUTPUT}"
+
+      - name: Prepare release notes
+        run: |
+          notes_file="docs/releases/${RELEASE_TAG}-alpha.md"
+          test -f "${notes_file}"
+          rg --fixed-strings '## Compatibility' "${notes_file}"
+          rg --fixed-strings '## Included behavior' "${notes_file}"
+          rg --fixed-strings '## Configuration and upgrade notes' "${notes_file}"
+          rg --fixed-strings '## Known limitations' "${notes_file}"
+          rg --fixed-strings '10.11.11' "${notes_file}"
+          install -m 0644 "${notes_file}" release-bundle/release-notes.md
+
+      - name: Install pinned JPRM for manifest generation
+        run: |
+          python3 -m venv "${RUNNER_TEMP}/jprm"
+          "${RUNNER_TEMP}/jprm/bin/pip" install \
+            --disable-pip-version-check \
+            "git+https://github.com/oddstr13/jellyfin-plugin-repository-manager.git@${JPRM_COMMIT}"
+          printf 'JPRM=%s\n' "${RUNNER_TEMP}/jprm/bin/jprm" >>"${GITHUB_ENV}"
+
+      - name: Generate and verify candidate manifest
+        env:
+          ASSET_URL: ${{ steps.assets.outputs.asset-url }}
+          PACKAGE: ${{ steps.assets.outputs.package }}
+        run: |
+          mkdir -p release-bundle/candidate-manifest
+          "${JPRM}" repo init release-bundle/candidate-manifest
+          "${JPRM}" repo add \
+            --plugin-url "${ASSET_URL}" \
+            release-bundle/candidate-manifest \
+            "${PACKAGE}"
+          scripts/verify-release-contract.sh \
+            "${RELEASE_TAG}" \
+            "${PACKAGE}" \
+            release-bundle/candidate-manifest/manifest.json \
+            "${ASSET_URL}"
+
+      - name: Prove clean Jellyfin catalog installation
+        env:
+          PACKAGE: ${{ steps.assets.outputs.package }}
+        run: |
+          JFTS_UID="$(id -u)"
+          JFTS_GID="$(id -g)"
+          export JFTS_UID JFTS_GID
+          scripts/test-env.sh up
+          scripts/configure-test-server.sh
+          JPRM_BIN="${JPRM}" scripts/test-manifest-install.sh "${PACKAGE}"
+
+      - name: Stop catalog-install test server
+        if: always()
+        run: scripts/test-env.sh down
+
+      - name: Upload validated release bundle
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.0
+        with:
+          name: collection-tag-sync-release-${{ env.RELEASE_TAG }}
+          if-no-files-found: error
+          retention-days: 7
+          path: release-bundle
+
+  publish:
+    name: Publish assets and manifest
+    if: github.event_name == 'push'
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Check out validated source commit
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+          ref: ${{ needs.build.outputs.source-commit }}
+
+      - name: Download validated release bundle
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: collection-tag-sync-release-${{ env.RELEASE_TAG }}
+          path: release-bundle
+
+      - name: Resolve validated source commit
+        id: source
+        env:
+          EXPECTED_COMMIT: ${{ needs.build.outputs.source-commit }}
+        run: |
+          source_commit="$(<release-bundle/source-commit.txt)"
+          [[ "${source_commit}" =~ ^[0-9a-f]{40}$ ]]
+          test "${source_commit}" = "${EXPECTED_COMMIT}"
+          printf 'commit=%s\n' "${source_commit}" >>"${GITHUB_OUTPUT}"
+
+      - name: Reject a moved release tag
+        env:
+          EXPECTED_COMMIT: ${{ steps.source.outputs.commit }}
+        run: |
+          tag_ref="refs/tags/${RELEASE_TAG}"
+          git show-ref --verify "${tag_ref}"
+          test "$(git rev-parse HEAD)" = "${EXPECTED_COMMIT}"
+          test "$(git rev-parse "${tag_ref}^{commit}")" = "${EXPECTED_COMMIT}"
+
+      - name: Install pinned JPRM
+        run: |
+          python3 -m venv "${RUNNER_TEMP}/jprm"
+          "${RUNNER_TEMP}/jprm/bin/pip" install \
+            --disable-pip-version-check \
+            "git+https://github.com/oddstr13/jellyfin-plugin-repository-manager.git@${JPRM_COMMIT}"
+          printf 'JPRM=%s\n' "${RUNNER_TEMP}/jprm/bin/jprm" >>"${GITHUB_ENV}"
+
+      - name: Resolve release asset contract
+        id: assets
+        run: |
+          version="${RELEASE_TAG#v}"
+          asset_name="Jellyfin.Plugin.CollectionTagSync_${version}.zip"
+          package="release-bundle/release-assets/${asset_name}"
+          asset_url="https://github.com/${GITHUB_REPOSITORY}/releases/download/${RELEASE_TAG}/${asset_name}"
+          scripts/verify-release-contract.sh \
+            "${RELEASE_TAG}" \
+            "${package}" \
+            release-bundle/candidate-manifest/manifest.json \
+            "${asset_url}"
+          {
+            printf 'asset-name=%s\n' "${asset_name}"
+            printf 'package=%s\n' "${package}"
+            printf 'asset-url=%s\n' "${asset_url}"
+          } >>"${GITHUB_OUTPUT}"
+
+      - name: Verify release notes contract
+        run: |
+          rg --fixed-strings '## Compatibility' release-bundle/release-notes.md
+          rg --fixed-strings '## Included behavior' release-bundle/release-notes.md
+          rg --fixed-strings '## Configuration and upgrade notes' release-bundle/release-notes.md
+          rg --fixed-strings '## Known limitations' release-bundle/release-notes.md
+          rg --fixed-strings '10.11.11' release-bundle/release-notes.md
+
+      - name: Create or verify draft prerelease
+        id: release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          version="${RELEASE_TAG#v}"
+          if gh release view "${RELEASE_TAG}" \
+            --repo "${GITHUB_REPOSITORY}" \
+            --json body,isDraft,isPrerelease \
+            >"${RUNNER_TEMP}/existing-release.json" 2>/dev/null; then
+            jq --exit-status '.isPrerelease == true' "${RUNNER_TEMP}/existing-release.json" >/dev/null
+            jq --raw-output .body "${RUNNER_TEMP}/existing-release.json" \
+              >"${RUNNER_TEMP}/existing-release-notes.md"
+            diff --strip-trailing-cr \
+              release-bundle/release-notes.md \
+              "${RUNNER_TEMP}/existing-release-notes.md"
+            published="$(jq --raw-output '(.isDraft | not)' "${RUNNER_TEMP}/existing-release.json")"
+          else
+            gh release create "${RELEASE_TAG}" \
+              --repo "${GITHUB_REPOSITORY}" \
+              --verify-tag \
+              --draft \
+              --prerelease \
+              --title "Collection Tag Sync ${version} alpha" \
+              --notes-file release-bundle/release-notes.md
+            published=false
+          fi
+          printf 'published=%s\n' "${published}" >>"${GITHUB_OUTPUT}"
+
+      - name: Publish immutable release assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PACKAGE: ${{ steps.assets.outputs.package }}
+        run: |
+          ensure_release_asset() {
+            local local_path="$1"
+            local asset_name
+            local download_dir
+            asset_name="$(basename -- "${local_path}")"
+            download_dir="${RUNNER_TEMP}/existing-${asset_name}"
+            if gh release view "${RELEASE_TAG}" \
+              --repo "${GITHUB_REPOSITORY}" \
+              --json assets \
+              --jq '.assets[].name' \
+              | rg --fixed-strings --line-regexp "${asset_name}" >/dev/null; then
+              printf 'Release asset already exists: %s\n' "${asset_name}"
+            else
+              gh release upload "${RELEASE_TAG}" \
+                "${local_path}" \
+                --repo "${GITHUB_REPOSITORY}"
+            fi
+            mkdir -p "${download_dir}"
+            gh release download "${RELEASE_TAG}" \
+              --repo "${GITHUB_REPOSITORY}" \
+              --pattern "${asset_name}" \
+              --dir "${download_dir}"
+            cmp "${local_path}" "${download_dir}/${asset_name}"
+            printf 'Release asset is byte-identical after upload: %s\n' "${asset_name}"
+          }
+
+          ensure_release_asset "${PACKAGE}"
+          ensure_release_asset "${PACKAGE}.sha256"
+
+      - name: Generate and verify manifest update
+        id: manifest
+        env:
+          ASSET_URL: ${{ steps.assets.outputs.asset-url }}
+          PACKAGE: ${{ steps.assets.outputs.package }}
+        run: |
+          manifest_dir="${RUNNER_TEMP}/manifest-repository"
+          repository_url="https://github.com/${GITHUB_REPOSITORY}.git"
+          if git ls-remote --exit-code --heads "${repository_url}" manifest >/dev/null 2>&1; then
+            git clone --branch manifest --single-branch "${repository_url}" "${manifest_dir}"
+          else
+            mkdir -p "${manifest_dir}"
+            git -C "${manifest_dir}" init
+            git -C "${manifest_dir}" switch --orphan manifest
+            git -C "${manifest_dir}" remote add origin "${repository_url}"
+            "${JPRM}" repo init "${manifest_dir}"
+          fi
+          cp "${manifest_dir}/manifest.json" "${RUNNER_TEMP}/manifest-before.json"
+
+          version="${RELEASE_TAG#v}"
+          plugin_guid="04920eee-c499-4b13-890f-7af0175f28f0"
+          if jq --exit-status \
+            --arg guid "${plugin_guid}" \
+            --arg version "${version}" \
+            'any(.[];
+              ((.guid | ascii_downcase) == ($guid | ascii_downcase))
+              and any(.versions[]; .version == $version))' \
+            "${manifest_dir}/manifest.json" >/dev/null; then
+            scripts/verify-release-contract.sh \
+              "${RELEASE_TAG}" \
+              "${PACKAGE}" \
+              "${manifest_dir}/manifest.json" \
+              "${ASSET_URL}"
+            scripts/verify-manifest-history.sh \
+              "${RUNNER_TEMP}/manifest-before.json" \
+              "${manifest_dir}/manifest.json"
+            printf 'Manifest already contains the identical release contract for %s.\n' "${RELEASE_TAG}"
+            printf 'changed=false\n' >>"${GITHUB_OUTPUT}"
+          else
+            "${JPRM}" repo add \
+              --plugin-url "${ASSET_URL}" \
+              "${manifest_dir}" \
+              "${PACKAGE}"
+            scripts/verify-release-contract.sh \
+              "${RELEASE_TAG}" \
+              "${PACKAGE}" \
+              "${manifest_dir}/manifest.json" \
+              "${ASSET_URL}"
+            scripts/verify-manifest-history.sh \
+              "${RUNNER_TEMP}/manifest-before.json" \
+              "${manifest_dir}/manifest.json"
+
+            git -C "${manifest_dir}" config user.name github-actions[bot]
+            git -C "${manifest_dir}" config user.email 41898282+github-actions[bot]@users.noreply.github.com
+            git -C "${manifest_dir}" add manifest.json
+            git -C "${manifest_dir}" commit -m "chore: publish ${RELEASE_TAG} manifest"
+            printf 'changed=true\n' >>"${GITHUB_OUTPUT}"
+          fi
+
+      - name: Publish validated prerelease
+        if: steps.release.outputs.published != 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release edit "${RELEASE_TAG}" \
+            --repo "${GITHUB_REPOSITORY}" \
+            --draft=false \
+            --prerelease
+
+      - name: Verify published package bytes
+        env:
+          ASSET_URL: ${{ steps.assets.outputs.asset-url }}
+          PACKAGE: ${{ steps.assets.outputs.package }}
+        run: |
+          curl --fail --location --retry 5 --retry-all-errors --retry-delay 2 \
+            "${ASSET_URL}" \
+            --output "${RUNNER_TEMP}/published-package.zip"
+          cmp "${PACKAGE}" "${RUNNER_TEMP}/published-package.zip"
+
+      - name: Push generated manifest branch
+        if: steps.manifest.outputs.changed == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh auth setup-git
+          git -C "${RUNNER_TEMP}/manifest-repository" push origin HEAD:manifest
+
+      - name: Verify public manifest
+        env:
+          ASSET_URL: ${{ steps.assets.outputs.asset-url }}
+          PACKAGE: ${{ steps.assets.outputs.package }}
+        run: |
+          public_manifest="https://raw.githubusercontent.com/${GITHUB_REPOSITORY}/manifest/manifest.json"
+          curl --fail --location --retry 5 --retry-all-errors --retry-delay 2 \
+            "${public_manifest}" \
+            --output "${RUNNER_TEMP}/published-manifest.json"
+          scripts/verify-release-contract.sh \
+            "${RELEASE_TAG}" \
+            "${PACKAGE}" \
+            "${RUNNER_TEMP}/published-manifest.json" \
+            "${ASSET_URL}"
