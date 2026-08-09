@@ -24,6 +24,8 @@ public sealed class PluginServiceRegistrator : IPluginServiceRegistrator
         serviceCollection.AddSingleton<IPlanWriter, JellyfinPlanWriter>();
         serviceCollection.AddSingleton<IPluginConfigurationPersistence, PluginConfigurationPersistence>();
         serviceCollection.AddSingleton<IConfigurationCatalog, JellyfinConfigurationCatalog>();
+        serviceCollection.AddSingleton<ICollectionCatalog, JellyfinCollectionCatalog>();
+        serviceCollection.AddSingleton<CollectionSelectionService>();
         serviceCollection.AddSingleton<BackgroundReconciliationStatusStore>();
         serviceCollection.AddSingleton<ConfigurationReconciliationDispatcher>();
         serviceCollection.AddSingleton<ConfigurationActivationService>();

@@ -16,6 +16,7 @@ collection memberships.
 - Multi-hop propagation through an acyclic mapping graph
 - Near-real-time synchronization backed by Full Reconcile
 - Previewed run-once operations and destructive-change confirmation
+- GUID-backed collection picker and independent Add New workflow
 
 The plugin will not automatically convert every Jellyfin tag into a collection.
 
