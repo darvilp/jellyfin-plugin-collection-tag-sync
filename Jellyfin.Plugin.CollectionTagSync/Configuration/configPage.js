@@ -209,6 +209,10 @@ export default function (view) {
         collections: [],
         tags: [],
         pendingCollectionSelect: null,
+        configurationEditRevision: 0,
+        configurationPreviewPending: false,
+        configurationMutationPending: false,
+        configurationEditedDuringMutation: false,
         runOnceExcludedIds: new Set(),
         latestFullReconcileId: null,
         queuedFullReconcileBaselineId: null,
@@ -493,9 +497,92 @@ export default function (view) {
     }
 
     function configurationChanged() {
+        const preview = query('#collectionTagSyncConfigurationPreview');
+        const confirmation = query('[data-action="confirm-configuration"]');
+        const invalidatedMutation = state.configurationMutationPending
+            && !state.configurationEditedDuringMutation;
+        const invalidatedWorkflow = !preview.hidden
+            || !confirmation.hidden
+            || state.configurationPreviewPending
+            || invalidatedMutation;
+        state.configurationEditRevision++;
+        state.configurationPreviewPending = false;
+        if (state.configurationMutationPending) {
+            state.configurationEditedDuringMutation = true;
+        }
+
         configGuard.changed();
-        query('[data-action="confirm-configuration"]').hidden = true;
-        query('#collectionTagSyncConfigurationPreview').hidden = true;
+        query('[data-action="save-configuration"]').hidden = false;
+        confirmation.hidden = true;
+        preview.hidden = true;
+        if (invalidatedWorkflow) {
+            setStatus(
+                '#collectionTagSyncConfigurationStatus',
+                'Configuration changed. Save configuration or preview changes when ready.',
+                'Warning');
+        }
+    }
+
+    function showDestructiveConfigurationConfirmation() {
+        query('[data-action="save-configuration"]').hidden = true;
+        query('[data-action="confirm-configuration"]').hidden = false;
+    }
+
+    function setConfigurationMutationPending(pending) {
+        state.configurationMutationPending = pending;
+        for (const selector of [
+            '[data-action="save-configuration"]',
+            '[data-action="confirm-configuration"]',
+            '[data-action="preview-configuration"]'
+        ]) {
+            query(selector).disabled = pending;
+        }
+    }
+
+    function beginConfigurationMutation() {
+        if (state.configurationMutationPending) {
+            return null;
+        }
+
+        state.configurationEditedDuringMutation = false;
+        setConfigurationMutationPending(true);
+        return state.configurationEditRevision;
+    }
+
+    function finishConfigurationMutation(submittedEditRevision) {
+        const editorChanged = state.configurationEditedDuringMutation
+            || state.configurationEditRevision !== submittedEditRevision;
+        setConfigurationMutationPending(false);
+        state.configurationEditedDuringMutation = false;
+        return editorChanged;
+    }
+
+    function pollConfigurationReconciliation(result) {
+        const reconciliationId = property(result, 'ReconciliationId', null);
+        if (reconciliationId) {
+            pollBackground('Configuration', reconciliationId, '#collectionTagSyncConfigurationReconciliation');
+        }
+
+        return reconciliationId;
+    }
+
+    function configurationSaved(result) {
+        configurationChanged();
+        const reconciliationId = pollConfigurationReconciliation(result);
+        setStatus(
+            '#collectionTagSyncConfigurationStatus',
+            reconciliationId
+                ? 'Configuration saved. Metadata changes were queued and will settle in the background.'
+                : 'Configuration saved. No metadata changes were queued.',
+            'Success');
+    }
+
+    function earlierConfigurationSaved(result) {
+        pollConfigurationReconciliation(result);
+        setStatus(
+            '#collectionTagSyncConfigurationStatus',
+            'The earlier configuration was saved, but current edits remain unsaved. Save configuration again when ready.',
+            'Warning');
     }
 
     function updateMappingTargetLabel(changedElement) {
@@ -614,33 +701,41 @@ export default function (view) {
     }
 
     async function activateConfiguration() {
+        if (state.configurationMutationPending) {
+            return;
+        }
+
         const candidate = readCandidate();
-        setStatus('#collectionTagSyncConfigurationStatus', 'Validating with the server…');
+        configurationChanged();
+        const submittedEditRevision = beginConfigurationMutation();
+        setStatus('#collectionTagSyncConfigurationStatus', 'Validating and saving with the server…');
         try {
             const result = await requestJson(apiClient, 'POST', 'CollectionTagSync/Configuration', candidate);
-            configGuard.changed();
+            const editorChanged = finishConfigurationMutation(submittedEditRevision);
             state.configuration = {
                 ...candidate,
                 Revision: property(result, 'ActiveRevision', candidate.Revision),
                 PausedFullReconcile: null
             };
-            query('[data-action="confirm-configuration"]').hidden = true;
-            setStatus('#collectionTagSyncConfigurationStatus', 'Configuration accepted by the server.', 'Success');
-            const reconciliationId = property(result, 'ReconciliationId', null);
-            if (reconciliationId) {
-                pollBackground('Configuration', reconciliationId, '#collectionTagSyncConfigurationReconciliation');
+            if (editorChanged) {
+                earlierConfigurationSaved(result);
+            } else {
+                configurationSaved(result);
             }
         } catch (error) {
-            const result = responsePayload(error);
-            const outcome = property(result, 'Outcome', null);
-            if (stateEquals(outcome, 2, 'RequiresPreview')) {
-                setStatus(
-                    '#collectionTagSyncConfigurationStatus',
-                    'This candidate includes removals. Preview it before confirmation.',
-                    'Warning');
+            const editorChanged = finishConfigurationMutation(submittedEditRevision);
+            if (editorChanged) {
                 return;
             }
 
+            const result = responsePayload(error);
+            const outcome = property(result, 'Outcome', null);
+            if (stateEquals(outcome, 2, 'RequiresPreview')) {
+                await previewConfiguration();
+                return;
+            }
+
+            configurationChanged();
             renderServerMessages(
                 '#collectionTagSyncConfigurationStatus',
                 result,
@@ -649,18 +744,50 @@ export default function (view) {
     }
 
     async function previewConfiguration() {
+        if (state.configurationMutationPending) {
+            return;
+        }
+
         const candidate = readCandidate();
+        configurationChanged();
+        const previewRevision = state.configurationEditRevision;
+        state.configurationPreviewPending = true;
         setStatus('#collectionTagSyncConfigurationStatus', 'Calculating the server preview…');
         try {
             const result = await requestJson(apiClient, 'POST', 'CollectionTagSync/Configuration/Preview', candidate);
+            if (!state.configurationPreviewPending
+                || state.configurationEditRevision !== previewRevision) {
+                return;
+            }
+
+            state.configurationPreviewPending = false;
             const authorization = property(result, 'Authorization', null);
             configGuard.remember({ Authorization: property(authorization, 'Authorization', ''), Candidate: candidate });
             renderPlanPreview('#collectionTagSyncConfigurationPreview', authorization);
-            query('[data-action="confirm-configuration"]').hidden = false;
-            setStatus('#collectionTagSyncConfigurationStatus', 'Preview ready. Review it before confirmation.', 'Success');
+            const summary = planSummary(property(authorization, 'Preview', {}));
+            if (summary.removals > 0) {
+                showDestructiveConfigurationConfirmation();
+                setStatus(
+                    '#collectionTagSyncConfigurationStatus',
+                    'Preview ready. No changes have been saved. Review the removals, then confirm removals and save.',
+                    'Warning');
+                query('#collectionTagSyncConfigurationPreview').focus();
+            } else {
+                query('[data-action="save-configuration"]').hidden = false;
+                query('[data-action="confirm-configuration"]').hidden = true;
+                setStatus(
+                    '#collectionTagSyncConfigurationStatus',
+                    'Preview ready. No changes have been saved. Choose Save configuration to accept it.',
+                    'Success');
+            }
         } catch (error) {
-            configGuard.changed();
-            query('[data-action="confirm-configuration"]').hidden = true;
+            if (!state.configurationPreviewPending
+                || state.configurationEditRevision !== previewRevision) {
+                return;
+            }
+
+            state.configurationPreviewPending = false;
+            configurationChanged();
             renderServerMessages(
                 '#collectionTagSyncConfigurationStatus',
                 responsePayload(error),
@@ -669,34 +796,44 @@ export default function (view) {
     }
 
     async function confirmConfiguration() {
+        if (state.configurationMutationPending) {
+            return;
+        }
+
         const remembered = configGuard.value();
         const authorization = configGuard.authorization();
         if (!remembered || !authorization) {
+            query('[data-action="save-configuration"]').hidden = false;
+            query('[data-action="confirm-configuration"]').hidden = true;
             setStatus('#collectionTagSyncConfigurationStatus', 'The preview is stale. Preview again.', 'Warning');
             return;
         }
 
-        setStatus('#collectionTagSyncConfigurationStatus', 'Recomputing and confirming with the server…');
+        const submittedEditRevision = beginConfigurationMutation();
+        setStatus('#collectionTagSyncConfigurationStatus', 'Recomputing approved removals and saving…');
         try {
             const result = await requestJson(apiClient, 'POST', 'CollectionTagSync/Configuration/Confirm', {
                 Candidate: remembered.Candidate,
                 Authorization: authorization
             });
-            configGuard.changed();
-            query('[data-action="confirm-configuration"]').hidden = true;
+            const editorChanged = finishConfigurationMutation(submittedEditRevision);
             state.configuration = {
                 ...remembered.Candidate,
                 Revision: property(result, 'ActiveRevision', remembered.Candidate.Revision),
                 PausedFullReconcile: null
             };
-            setStatus('#collectionTagSyncConfigurationStatus', 'Previewed configuration accepted.', 'Success');
-            const reconciliationId = property(result, 'ReconciliationId', null);
-            if (reconciliationId) {
-                pollBackground('Configuration', reconciliationId, '#collectionTagSyncConfigurationReconciliation');
+            if (editorChanged) {
+                earlierConfigurationSaved(result);
+            } else {
+                configurationSaved(result);
             }
         } catch (error) {
-            configGuard.changed();
-            query('[data-action="confirm-configuration"]').hidden = true;
+            const editorChanged = finishConfigurationMutation(submittedEditRevision);
+            if (editorChanged) {
+                return;
+            }
+
+            configurationChanged();
             const payload = responsePayload(error);
             const messages = serverValidationMessages(payload);
             setStatus(
