@@ -23,15 +23,7 @@ public static class DestructiveCircuitBreaker
         ArgumentNullException.ThrowIfNull(options);
 
         var planArray = plans.ToArray();
-        var removals = planArray
-            .SelectMany(plan => plan.Mutations
-                .Where(IsAuthoritativeRemoval)
-                .Select(mutation => new DestructiveRemoval(plan.ItemId, mutation.Target, mutation.Kind)))
-            .Distinct()
-            .OrderBy(removal => removal.ItemId)
-            .ThenBy(removal => removal.Target, NodeComparer.Instance)
-            .ThenBy(removal => removal.Kind)
-            .ToArray();
+        var removals = DestructiveRemovalSet.FromPlans(planArray);
         var uniqueAffectedItemCount = removals
             .Select(removal => removal.ItemId)
             .Distinct()
@@ -72,12 +64,5 @@ public static class DestructiveCircuitBreaker
             currentAssignmentCount,
             removalCount,
             exceedsPercentageLimit);
-    }
-
-    private static bool IsAuthoritativeRemoval(PlannedMutation mutation)
-    {
-        return mutation.Policy == MappingPolicy.Authoritative
-            && mutation.Kind is PlannedMutationKind.RemoveTag
-                or PlannedMutationKind.RemoveCollectionMembership;
     }
 }

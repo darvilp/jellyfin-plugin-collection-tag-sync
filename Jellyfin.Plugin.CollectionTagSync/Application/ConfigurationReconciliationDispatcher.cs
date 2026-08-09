@@ -39,11 +39,13 @@ public sealed class ConfigurationReconciliationDispatcher
     /// <param name="revision">The accepted configuration revision.</param>
     /// <param name="itemIds">The complete eligible item identity set.</param>
     /// <param name="configuration">The immutable accepted configuration.</param>
+    /// <param name="precomputedPlans">The exact accepted plans, or <see langword="null"/> for fresh worker planning.</param>
     /// <returns>The opaque background reconciliation identity.</returns>
     internal Guid Enqueue(
         long revision,
         IReadOnlyList<Guid> itemIds,
-        MappingConfiguration configuration)
+        MappingConfiguration configuration,
+        IReadOnlyList<ReconciliationPlan>? precomputedPlans = null)
     {
         ArgumentNullException.ThrowIfNull(itemIds);
         ArgumentNullException.ThrowIfNull(configuration);
@@ -53,7 +55,8 @@ public sealed class ConfigurationReconciliationDispatcher
                 id,
                 revision,
                 itemIds,
-                configuration)))
+                configuration,
+                precomputedPlans)))
         {
             throw new InvalidOperationException(
                 "The configuration reconciliation dispatcher is unavailable.");

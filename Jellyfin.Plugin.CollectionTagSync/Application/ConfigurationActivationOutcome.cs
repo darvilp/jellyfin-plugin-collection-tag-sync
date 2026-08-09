@@ -19,4 +19,9 @@ public enum ConfigurationActivationOutcome
     /// The candidate would remove metadata and requires the later preview workflow.
     /// </summary>
     RequiresPreview,
+
+    /// <summary>
+    /// The supplied preview authorization was missing, expired, consumed, or owned by another administrator.
+    /// </summary>
+    InvalidAuthorization,
 }

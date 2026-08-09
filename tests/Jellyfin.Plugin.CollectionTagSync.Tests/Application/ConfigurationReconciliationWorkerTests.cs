@@ -168,6 +168,49 @@ public sealed class ConfigurationReconciliationWorkerTests
         Assert.Equal(["First Target", "Second Target"], state.AddedTargets);
     }
 
+    [Fact]
+    public async Task PrecomputedRequestAppliesExactPlansWithoutReadingChangedState()
+    {
+        var firstItemId = new Guid("3d18ea80-42e0-4110-a33a-aa0c3986b2af");
+        var secondItemId = new Guid("3603ff48-62ea-45a1-97a8-9390161fc352");
+        var configuration = CreateAuthoritativeConfiguration();
+        var firstPlan = ReconciliationPlanner.Plan(
+            configuration,
+            State(firstItemId, ["Target"]));
+        var secondPlan = ReconciliationPlanner.Plan(
+            configuration,
+            State(secondItemId, []));
+        var statusStore = new BackgroundReconciliationStatusStore();
+        var dispatcher = new ConfigurationReconciliationDispatcher(statusStore);
+        var requestId = dispatcher.Enqueue(
+            revision: 20,
+            [firstItemId, secondItemId],
+            configuration,
+            [firstPlan, secondPlan]);
+        var writer = new RecordingPlanWriter();
+        using var worker = new ConfigurationReconciliationWorker(
+            dispatcher,
+            statusStore,
+            new ItemReconciler(
+                new FixedConfigurationProvider(configuration),
+                new RejectingStateReader(),
+                writer),
+            new PassThroughOperationalMappingProvider(),
+            new ReconciliationExecutionGate(),
+            new RecordingFailureQuarantine(),
+            NullLogger<ConfigurationReconciliationWorker>.Instance);
+
+        await worker.StartAsync(CancellationToken.None).ConfigureAwait(true);
+        await WaitUntilAsync(() =>
+            statusStore.Get(requestId)?.State == BackgroundReconciliationState.Completed)
+            .ConfigureAwait(true);
+        await worker.StopAsync(CancellationToken.None).ConfigureAwait(true);
+
+        var applied = Assert.Single(writer.Plans);
+        Assert.Equal(firstItemId, applied.ItemId);
+        Assert.Equal(PlannedMutationKind.RemoveTag, Assert.Single(applied.Mutations).Kind);
+    }
+
     private static async Task WaitUntilAsync(Func<bool> condition)
     {
         using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(5));
@@ -253,6 +296,27 @@ public sealed class ConfigurationReconciliationWorkerTests
             ]).Configuration);
     }
 
+    private static MappingConfiguration CreateAuthoritativeConfiguration()
+    {
+        return Assert.IsType<MappingConfiguration>(MappingConfiguration.Create(
+            [
+                new MappingGroupDefinition(
+                    new TagNodeDefinition("Target"),
+                    [new TagNodeDefinition("Absent")],
+                    MappingPolicy.Authoritative,
+                    isEnabled: true),
+            ]).Configuration);
+    }
+
+    private static ObservedItemState State(Guid itemId, string[] tags)
+    {
+        return new ObservedItemState(
+            itemId,
+            EligibleItemKind.Movie,
+            tags,
+            directCollectionIds: []);
+    }
+
     private sealed class BlockingStateReader : IItemStateReader
     {
         private readonly ObservedItemState _state;
@@ -299,6 +363,28 @@ public sealed class ConfigurationReconciliationWorkerTests
             CancellationToken cancellationToken)
         {
             return Task.FromResult<ObservedItemState?>(_state);
+        }
+    }
+
+    private sealed class RejectingStateReader : IItemStateReader
+    {
+        public Task<ObservedItemState?> ReadAsync(
+            Guid itemId,
+            MappingConfiguration configuration,
+            CancellationToken cancellationToken)
+        {
+            throw new InvalidOperationException("A precomputed request must not read changed state.");
+        }
+    }
+
+    private sealed class RecordingPlanWriter : IPlanWriter
+    {
+        public List<ReconciliationPlan> Plans { get; } = [];
+
+        public Task ApplyAsync(ReconciliationPlan plan, CancellationToken cancellationToken)
+        {
+            Plans.Add(plan);
+            return Task.CompletedTask;
         }
     }
 

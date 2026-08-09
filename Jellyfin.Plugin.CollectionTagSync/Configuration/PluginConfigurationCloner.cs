@@ -36,22 +36,10 @@ internal static class PluginConfigurationCloner
     {
         return new MappingGroupConfiguration
         {
-            Target = CloneNode(group.Target),
-            Sources = (group.Sources ?? []).Select(CloneNode).ToArray(),
+            Target = MappingNodeConfigurationMapper.Clone(group.Target),
+            Sources = (group.Sources ?? []).Select(MappingNodeConfigurationMapper.Clone).ToArray(),
             Policy = group.Policy,
             IsEnabled = group.IsEnabled,
-        };
-    }
-
-    private static MappingNodeConfiguration CloneNode(MappingNodeConfiguration? node)
-    {
-        node ??= new MappingNodeConfiguration();
-        return new MappingNodeConfiguration
-        {
-            Kind = node.Kind,
-            TagValue = node.TagValue,
-            CollectionId = node.CollectionId,
-            CollectionDisplayName = node.CollectionDisplayName,
         };
     }
 }
