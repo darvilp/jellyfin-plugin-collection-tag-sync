@@ -1,0 +1,35 @@
+# .NET build output
+**/bin/
+**/obj/
+artifacts/
+TestResults/
+coverage/
+
+# IDE and editor state
+.vs/
+.vscode/
+.idea/
+*.suo
+*.user
+*.userosscache
+*.sln.docstates
+
+# Local Jellyfin test state
+.jellyfin/
+jellyfin-data/
+jellyfin-config/
+jellyfin-cache/
+jellyfin-logs/
+
+# Local Codex and agent state
+.agents/
+.codex/
+
+# Operating-system metadata
+.DS_Store
+Thumbs.db
+*:Zone.Identifier
+
+# Original planning packet exports; docs/ is canonical
+/Collection-Tag-Sync-Design-Packet.md
+/collection-tag-sync-design-packet.zip
