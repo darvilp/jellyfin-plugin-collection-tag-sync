@@ -127,6 +127,7 @@ public sealed class CollectionSelectionServiceTests
             new FixedPersistence(new PluginConfiguration { Revision = 1 }),
             catalog,
             new NullStateReader(),
+            new TestItemTitleProvider(),
             new ConfigurationReconciliationDispatcher(statusStore),
             new ReconciliationExecutionGate(),
             TimeProvider.System);
@@ -160,6 +161,7 @@ public sealed class CollectionSelectionServiceTests
             new ThrowingPersistence(new PluginConfiguration { Revision = 3 }),
             catalog,
             new NullStateReader(),
+            new TestItemTitleProvider(),
             new ConfigurationReconciliationDispatcher(statusStore),
             statusStore,
             new ReconciliationExecutionGate(),

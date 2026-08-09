@@ -20,6 +20,7 @@ access_token="$(<"${token_file}")"
 source_tag="Waltney-RunOnce-$(date -u +'%Y%m%d%H%M%S%N')"
 cascade_tag="Blooth-RunOnce-$(date -u +'%Y%m%d%H%M%S%N')"
 movie_id=''
+movie_title=''
 original_tags=''
 original_configuration=''
 animation_id=''
@@ -186,6 +187,8 @@ fi
 
 items="$(api_get "${server_url}/Items?Recursive=true&IncludeItemTypes=Movie,Series&Fields=Tags")"
 movie_id="$(jq --raw-output '.Items[] | select(.Type == "Movie") | .Id' <<<"${items}" | head -n 1)"
+movie_title="$(jq --raw-output --arg item_id "${movie_id}" \
+    '.Items[] | select(.Id == $item_id) | .Name' <<<"${items}")"
 original_tags="$(jq --compact-output --arg item_id "${movie_id}" \
     '.Items[] | select(.Id == $item_id) | (.Tags // [])' <<<"${items}")"
 animation_name="Run Once Animation $(date -u +'%Y%m%d%H%M%S%N')"
@@ -240,19 +243,21 @@ fi
 
 if ! jq --exit-status \
     --arg item_id "${movie_id}" \
+    --arg item_title "${movie_title}" \
     --arg animation_id "${animation_id}" \
     --arg cascade_tag "${cascade_tag}" \
     --arg kids_id "${kids_id}" \
     '((.Authorization.ExcludableItemIds // .authorization.excludableItemIds) | index($item_id)) != null
      and ((.Authorization.Preview.Items // .authorization.preview.items)[]
         | select((.ItemId // .itemId) == $item_id)
-        | (.Mutations // .mutations) as $mutations
-        | (($mutations | length) == 3)
+        | ((.ItemTitle // .itemTitle) == $item_title)
+          and ((.Mutations // .mutations) as $mutations
+          | (($mutations | length) == 3)
           and ($mutations | any((.Target.CollectionId // .target.collectionId) == $animation_id))
           and ($mutations | any((.Target.TagValue // .target.tagValue) == $cascade_tag))
-          and ($mutations | any((.Target.CollectionId // .target.collectionId) == $kids_id)))' \
+          and ($mutations | any((.Target.CollectionId // .target.collectionId) == $kids_id))))' \
     <<<"${response_body}" >/dev/null; then
-    printf 'Run-once preview did not contain the direct target and two downstream cascades.\n' >&2
+    printf 'Run-once preview did not contain the item title, direct target, and two downstream cascades.\n' >&2
     exit 8
 fi
 

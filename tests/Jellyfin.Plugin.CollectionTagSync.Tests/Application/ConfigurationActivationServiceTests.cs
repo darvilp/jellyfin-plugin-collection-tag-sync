@@ -286,6 +286,7 @@ public sealed class ConfigurationActivationServiceTests
                 directTags: ["Parent", "Child", "Source"],
                 directCollectionIds: [])),
             statusStore,
+            itemTitleProvider: new TestItemTitleProvider((itemId, "Waltney Adventure")),
             timeProvider: time);
         var candidate = new PluginConfiguration
         {
@@ -311,6 +312,7 @@ public sealed class ConfigurationActivationServiceTests
         Assert.Equal(1, authorization.Preview.TotalItemCount);
         var item = Assert.Single(authorization.Preview.Items);
         Assert.Equal(itemId, item.ItemId);
+        Assert.Equal("Waltney Adventure", item.ItemTitle);
         Assert.Contains(item.Mutations, mutation =>
             mutation.Kind == PlannedMutationKind.RemoveTag
             && mutation.Target.TagValue == "Parent");
@@ -880,12 +882,14 @@ public sealed class ConfigurationActivationServiceTests
         BackgroundReconciliationStatusStore statusStore,
         ReconciliationExecutionGate? executionGate = null,
         ConfigurationReconciliationDispatcher? dispatcher = null,
+        IItemTitleProvider? itemTitleProvider = null,
         TimeProvider? timeProvider = null)
     {
         return new ConfigurationActivationService(
             persistence,
             catalog,
             stateReader,
+            itemTitleProvider ?? new TestItemTitleProvider(),
             dispatcher ?? new ConfigurationReconciliationDispatcher(statusStore),
             statusStore,
             executionGate ?? new ReconciliationExecutionGate(),

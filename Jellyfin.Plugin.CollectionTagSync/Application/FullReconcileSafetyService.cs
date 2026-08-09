@@ -13,6 +13,7 @@ public sealed class FullReconcileSafetyService
 {
     private readonly object _sync = new();
     private readonly IPluginConfigurationPersistence _persistence;
+    private readonly IItemTitleProvider _itemTitleProvider;
     private readonly TimeProvider _timeProvider;
     private readonly PreviewAuthorizationStore<FullReconcileConfirmation> _authorizationStore;
 
@@ -20,12 +21,15 @@ public sealed class FullReconcileSafetyService
     /// Initializes a new instance of the <see cref="FullReconcileSafetyService"/> class.
     /// </summary>
     /// <param name="persistence">The active plugin configuration persistence boundary.</param>
+    /// <param name="itemTitleProvider">The current Jellyfin item-title boundary.</param>
     /// <param name="timeProvider">The authorization and diagnostic clock.</param>
     public FullReconcileSafetyService(
         IPluginConfigurationPersistence persistence,
+        IItemTitleProvider itemTitleProvider,
         TimeProvider timeProvider)
     {
         _persistence = persistence;
+        _itemTitleProvider = itemTitleProvider;
         _timeProvider = timeProvider;
         _authorizationStore = new PreviewAuthorizationStore<FullReconcileConfirmation>(timeProvider);
     }
@@ -63,6 +67,11 @@ public sealed class FullReconcileSafetyService
                     paused.ConfigurationRevision,
                     PausedFullReconcileConfigurationMapper.ToRemovals(paused)));
             var preview = PausedFullReconcileConfigurationMapper.Clone(paused)!;
+            foreach (var item in preview.Items ?? [])
+            {
+                item.ItemTitle = _itemTitleProvider.GetTitle(item.ItemId);
+            }
+
             return new FullReconcilePreviewAuthorization(
                 preview,
                 grant.Authorization,

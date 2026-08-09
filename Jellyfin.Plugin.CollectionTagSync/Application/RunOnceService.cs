@@ -17,6 +17,7 @@ public sealed class RunOnceService : IDisposable
     private readonly IPluginConfigurationPersistence _persistence;
     private readonly IConfigurationCatalog _catalog;
     private readonly IItemStateReader _stateReader;
+    private readonly IItemTitleProvider _itemTitleProvider;
     private readonly ConfigurationReconciliationDispatcher _dispatcher;
     private readonly ReconciliationExecutionGate _executionGate;
     private readonly RunOncePreviewAuthorizationService _authorizationService;
@@ -27,6 +28,7 @@ public sealed class RunOnceService : IDisposable
     /// <param name="persistence">The active plugin configuration boundary.</param>
     /// <param name="catalog">The eligible item and collection catalog.</param>
     /// <param name="stateReader">The direct item-state reader.</param>
+    /// <param name="itemTitleProvider">The current Jellyfin item-title boundary.</param>
     /// <param name="dispatcher">The exact-plan background dispatcher.</param>
     /// <param name="executionGate">The shared mutation serialization boundary.</param>
     /// <param name="timeProvider">The preview authorization clock.</param>
@@ -34,6 +36,7 @@ public sealed class RunOnceService : IDisposable
         IPluginConfigurationPersistence persistence,
         IConfigurationCatalog catalog,
         IItemStateReader stateReader,
+        IItemTitleProvider itemTitleProvider,
         ConfigurationReconciliationDispatcher dispatcher,
         ReconciliationExecutionGate executionGate,
         TimeProvider timeProvider)
@@ -41,6 +44,7 @@ public sealed class RunOnceService : IDisposable
         _persistence = persistence;
         _catalog = catalog;
         _stateReader = stateReader;
+        _itemTitleProvider = itemTitleProvider;
         _dispatcher = dispatcher;
         _executionGate = executionGate;
         _authorizationService = new RunOncePreviewAuthorizationService(timeProvider);
@@ -88,7 +92,8 @@ public sealed class RunOnceService : IDisposable
                 var preview = ConfigurationPlanPreviewMapper.Create(
                     current.Revision,
                     candidatePlan.TotalItemCount,
-                    candidatePlan.Plans);
+                    candidatePlan.Plans,
+                    _itemTitleProvider);
                 var authorization = _authorizationService.Issue(
                     preview,
                     candidatePlan.ExcludableItemIds,

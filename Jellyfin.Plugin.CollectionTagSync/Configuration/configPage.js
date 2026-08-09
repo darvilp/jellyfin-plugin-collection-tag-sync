@@ -586,6 +586,9 @@ export default function (view) {
         });
         const itemMarkup = displayedItems.map(item => {
             const itemId = String(property(item, 'ItemId', '') || '');
+            const itemKind = itemKindLabel(property(item, 'ItemKind', 'Item'));
+            const itemTitle = String(property(item, 'ItemTitle', '') || '').trim();
+            const primaryLabel = itemTitle || `Untitled ${itemKind}`;
             const mutations = (property(item, 'Mutations', []) ?? [])
                 .map(mutation => `<li class="collectionTagSyncMutation">${escapeHtml(mutationLabel(mutation))}</li>`)
                 .join('');
@@ -596,8 +599,9 @@ export default function (view) {
                        <span>Retain this item's observed target state</span>
                    </label>`
                 : '';
-            return `<li><strong>${escapeHtml(itemKindLabel(property(item, 'ItemKind', 'Item')))}</strong>
-                        <span>${escapeHtml(itemId)}</span>${exclusion}<ul>${mutations}</ul></li>`;
+            return `<li><strong>${escapeHtml(primaryLabel)}</strong>
+                        <div class="fieldDescription">${escapeHtml(itemKind)} · Item ID: ${escapeHtml(itemId)}</div>
+                        ${exclusion}<ul>${mutations}</ul></li>`;
         }).join('');
         const expires = property(authorization, 'ExpiresAtUtc', '');
         const container = query(selector);
@@ -794,6 +798,10 @@ export default function (view) {
         const preview = property(authorization, 'Preview', {});
         const removals = property(preview, 'Removals', []) ?? [];
         const groups = property(preview, 'Groups', []) ?? [];
+        const itemsById = new Map((property(preview, 'Items', []) ?? []).map(item => [
+            String(property(item, 'ItemId', '') || ''),
+            item
+        ]));
         const container = query('#collectionTagSyncFullReconcilePreview');
         container.innerHTML = `
             <p><strong>${escapeHtml(property(preview, 'UniqueAffectedItemCount', 0))}</strong> unique items are affected,
@@ -802,10 +810,16 @@ export default function (view) {
                 ? 'The absolute affected-item limit was exceeded.'
                 : 'One or more per-group limits were exceeded.'}</p>
             <h4>Item-level removals</h4>
-            <ul>${removals.map(removal => `
-                <li>Item ${escapeHtml(property(removal, 'ItemId', ''))}:
+            <ul>${removals.map(removal => {
+                const itemId = String(property(removal, 'ItemId', '') || '');
+                const item = itemsById.get(itemId) ?? {};
+                const itemKind = itemKindLabel(property(item, 'ItemKind', 'Item'));
+                const itemTitle = String(property(item, 'ItemTitle', '') || '').trim();
+                return `<li><strong>${escapeHtml(itemTitle || `Untitled ${itemKind}`)}</strong>
+                    <div class="fieldDescription">${escapeHtml(itemKind)} · Item ID: ${escapeHtml(itemId)}</div>
                     ${escapeHtml(mutationDirection(property(removal, 'Kind', '')))}
-                    ${escapeHtml(nodeDisplayLabel(property(removal, 'Target', {})))}</li>`).join('')}</ul>
+                    ${escapeHtml(nodeDisplayLabel(property(removal, 'Target', {})))}</li>`;
+            }).join('')}</ul>
             <h4>Removal limits by target</h4>
             <ul>${groups.map(group => `
                 <li>${escapeHtml(nodeDisplayLabel(property(group, 'Target', {})))}:

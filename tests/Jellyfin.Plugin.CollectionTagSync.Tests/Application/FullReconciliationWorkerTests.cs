@@ -41,7 +41,7 @@ public sealed class FullReconciliationWorkerTests
             new ReconciliationExecutionGate(),
             new RecordingIncrementalRecovery(),
             new AlwaysQuietActivityMonitor(),
-            new FullReconcileSafetyService(persistence, TimeProvider.System),
+            new FullReconcileSafetyService(persistence, new TestItemTitleProvider(), TimeProvider.System),
             NullLogger<FullReconciliationWorker>.Instance);
         await worker.StartAsync(CancellationToken.None).ConfigureAwait(true);
 
@@ -81,7 +81,10 @@ public sealed class FullReconciliationWorkerTests
         };
         var persistence = new RecordingConfigurationPersistence(new PluginConfiguration { Revision = 8 });
         var requests = new FullReconcileRequestStore();
-        var safety = new FullReconcileSafetyService(persistence, TimeProvider.System);
+        var safety = new FullReconcileSafetyService(
+            persistence,
+            new TestItemTitleProvider(),
+            TimeProvider.System);
         var approval = new FullReconcileApprovalService(requests, safety);
         using var worker = new FullReconciliationWorker(
             requests,
@@ -137,7 +140,10 @@ public sealed class FullReconciliationWorkerTests
         };
         var persistence = new RecordingConfigurationPersistence(new PluginConfiguration { Revision = 12 });
         var requests = new FullReconcileRequestStore();
-        var safety = new FullReconcileSafetyService(persistence, TimeProvider.System);
+        var safety = new FullReconcileSafetyService(
+            persistence,
+            new TestItemTitleProvider(),
+            TimeProvider.System);
         var approval = new FullReconcileApprovalService(requests, safety);
         using var worker = new FullReconciliationWorker(
             requests,
@@ -439,6 +445,7 @@ public sealed class FullReconciliationWorkerTests
     {
         return new FullReconcileSafetyService(
             new RecordingConfigurationPersistence(new PluginConfiguration()),
+            new TestItemTitleProvider(),
             TimeProvider.System);
     }
 

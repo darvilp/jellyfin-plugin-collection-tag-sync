@@ -38,7 +38,10 @@ public sealed class FullReconcileSafetyServiceTests
                     : ["Blooth-Remove"])))
             .ToArray();
         var persistence = new RecordingPersistence(new PluginConfiguration { Revision = 4 });
-        var service = new FullReconcileSafetyService(persistence, TimeProvider.System);
+        var service = new FullReconcileSafetyService(
+            persistence,
+            new TestItemTitleProvider((plans[0].ItemId, "Waltney Adventure")),
+            TimeProvider.System);
 
         var decision = service.Evaluate(
             new Guid("005811c3-c464-4d67-b03d-61fcfec30d78"),
@@ -67,6 +70,11 @@ public sealed class FullReconcileSafetyServiceTests
         Assert.True(cascadedFinalState.EffectiveState);
         Assert.Contains(cascadedFinalState.SupportingSources, source =>
             source.TagValue == "Waltney-Intermediate");
+        var authorization = Assert.IsType<FullReconcilePreviewAuthorization>(
+            service.CreatePreviewAuthorization(
+                preview.RunId,
+                new Guid("872ad32c-d9b6-43df-9699-287d759d8f1c")));
+        Assert.Equal("Waltney Adventure", authorization.Preview.Items[0].ItemTitle);
     }
 
     [Fact]
@@ -91,7 +99,10 @@ public sealed class FullReconcileSafetyServiceTests
                 State(index, ["Blooth-Remove"])))
             .ToArray();
         var persistence = new RecordingPersistence(new PluginConfiguration { Revision = 9 });
-        var service = new FullReconcileSafetyService(persistence, TimeProvider.System);
+        var service = new FullReconcileSafetyService(
+            persistence,
+            new TestItemTitleProvider(),
+            TimeProvider.System);
         var pausedRunId = new Guid("97e633ca-da66-41c1-88e5-6a08fabf5d5d");
         Assert.Equal(
             FullReconcileSafetyDecision.Paused,
@@ -138,7 +149,7 @@ public sealed class FullReconcileSafetyServiceTests
         var otherAdministratorId = new Guid("eeb05e56-b8ca-4507-a5ee-cfe4590ea9fb");
         var time = new ManualTimeProvider(new DateTimeOffset(2026, 8, 9, 12, 0, 0, TimeSpan.Zero));
         var persistence = new RecordingPersistence(PausedConfiguration(runId));
-        var service = new FullReconcileSafetyService(persistence, time);
+        var service = new FullReconcileSafetyService(persistence, new TestItemTitleProvider(), time);
         var first = Assert.IsType<FullReconcilePreviewAuthorization>(
             service.CreatePreviewAuthorization(runId, administratorId));
 
@@ -159,11 +170,17 @@ public sealed class FullReconcileSafetyServiceTests
         var runId = new Guid("46fa44ed-a398-4f8b-90d1-6e6241216556");
         var administratorId = new Guid("9a5f7b09-7eb0-4e1d-ac14-4a617705503f");
         var persistence = new RecordingPersistence(PausedConfiguration(runId));
-        var beforeRestart = new FullReconcileSafetyService(persistence, TimeProvider.System);
+        var beforeRestart = new FullReconcileSafetyService(
+            persistence,
+            new TestItemTitleProvider(),
+            TimeProvider.System);
         var authorization = Assert.IsType<FullReconcilePreviewAuthorization>(
             beforeRestart.CreatePreviewAuthorization(runId, administratorId));
 
-        var afterRestart = new FullReconcileSafetyService(persistence, TimeProvider.System);
+        var afterRestart = new FullReconcileSafetyService(
+            persistence,
+            new TestItemTitleProvider(),
+            TimeProvider.System);
 
         Assert.Null(afterRestart.ConsumeAuthorization(
             runId,

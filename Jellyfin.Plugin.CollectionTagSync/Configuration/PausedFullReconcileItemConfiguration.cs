@@ -12,6 +12,9 @@ public sealed class PausedFullReconcileItemConfiguration
     /// <summary>Gets or sets the eligible item identifier.</summary>
     public Guid ItemId { get; set; }
 
+    /// <summary>Gets or sets the current Jellyfin item title for API display.</summary>
+    public string ItemTitle { get; set; } = string.Empty;
+
     /// <summary>Gets or sets the eligible item kind.</summary>
     public EligibleItemKind ItemKind { get; set; }
 
