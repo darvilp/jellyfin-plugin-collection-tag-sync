@@ -141,6 +141,29 @@ jobs:
           scripts/configure-test-server.sh
           JPRM_BIN="${JPRM}" scripts/test-manifest-install.sh "${PACKAGE}"
 
+      - name: Detect versioned upgrade contract
+        id: upgrade-contract
+        run: |
+          if [[ -x scripts/test-manifest-upgrade.sh ]] \
+            && scripts/read-build-metadata.sh upgradeFrom >/dev/null 2>&1; then
+            printf 'enabled=true\n' >>"${GITHUB_OUTPUT}"
+          else
+            printf 'enabled=false\n' >>"${GITHUB_OUTPUT}"
+          fi
+
+      - name: Prove public-package upgrade and configuration retention
+        if: steps.upgrade-contract.outputs.enabled == 'true'
+        env:
+          PACKAGE: ${{ steps.assets.outputs.package }}
+        run: |
+          JFTS_UID="$(id -u)"
+          JFTS_GID="$(id -g)"
+          export JFTS_UID JFTS_GID
+          scripts/test-env.sh reset --confirm
+          scripts/test-env.sh up
+          scripts/configure-test-server.sh
+          JPRM_BIN="${JPRM}" scripts/test-manifest-upgrade.sh "${PACKAGE}"
+
       - name: Stop catalog-install test server
         if: always()
         run: scripts/test-env.sh down
