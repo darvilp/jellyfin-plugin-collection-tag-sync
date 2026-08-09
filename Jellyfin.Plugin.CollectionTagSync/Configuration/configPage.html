@@ -54,19 +54,24 @@
                 </label>
             </div>
 
+            <p class="fieldDescription">
+                Save configuration validates with the server and saves immediately when no removals are needed.
+                Preview changes does not save. After a save is accepted, metadata changes settle in the background.
+            </p>
             <div class="collectionTagSyncActions">
                 <button is="emby-button" type="button" class="raised button-submit" data-action="save-configuration">
-                    <span>Validate and save</span>
-                </button>
-                <button is="emby-button" type="button" class="raised button" data-action="preview-configuration">
-                    <span>Preview candidate configuration</span>
+                    <span>Save configuration</span>
                 </button>
                 <button is="emby-button" type="button" class="raised button-warning" data-action="confirm-configuration" hidden>
-                    <span>Confirm previewed configuration</span>
+                    <span>Confirm removals and save</span>
+                </button>
+                <button is="emby-button" type="button" class="raised button" data-action="preview-configuration">
+                    <span>Preview changes</span>
                 </button>
             </div>
             <div id="collectionTagSyncConfigurationStatus" class="collectionTagSyncStatus" aria-live="polite"></div>
-            <div id="collectionTagSyncConfigurationPreview" class="collectionTagSyncPreview" hidden></div>
+            <div id="collectionTagSyncConfigurationPreview" class="collectionTagSyncPreview"
+                 role="region" aria-label="Configuration change preview" tabindex="-1" hidden></div>
             <div id="collectionTagSyncConfigurationReconciliation" class="collectionTagSyncStatus" aria-live="polite"></div>
         </section>
 

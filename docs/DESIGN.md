@@ -782,9 +782,15 @@ Sources:
 Controls:
 
 - Add mapping group
-- Validate graph
-- Preview candidate configuration
+- Save configuration, which validates implicitly and saves a removal-free candidate
+- Preview changes, which is optional and never saves
+- Confirm removals and save, which replaces the normal save action only after a
+  destructive preview is ready
 - Run Full Reconcile
+
+The UI reports configuration acceptance separately from background metadata
+settlement. A save that discovers removals automatically opens the required
+preview instead of presenting confirmation as an unrelated third action.
 
 ### 16.2 Node selectors
 

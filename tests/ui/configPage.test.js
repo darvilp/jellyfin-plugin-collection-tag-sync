@@ -46,6 +46,7 @@ class FakeElement {
     }
 
     focus() {
+        this.focused = true;
     }
 
     querySelectorAll() {
@@ -97,6 +98,13 @@ class FakeView {
         this.targetEditor = new FakeNodeEditor('Kid-Approved');
         this.sourceEditor = new FakeNodeEditor('Waltney');
         this.elements.set('#collectionTagSyncRunOncePolicy', new FakeElement({ value: '0' }));
+        this.elements.set('[data-action="save-configuration"]', new FakeElement());
+        const confirmConfiguration = new FakeElement();
+        confirmConfiguration.hidden = true;
+        this.elements.set('[data-action="confirm-configuration"]', confirmConfiguration);
+        const configurationPreview = new FakeElement();
+        configurationPreview.hidden = true;
+        this.elements.set('#collectionTagSyncConfigurationPreview', configurationPreview);
     }
 
     addEventListener(type, listener) {
@@ -161,6 +169,28 @@ function runOncePreview({
             Preview: { TotalItemCount: items.length, Items: items }
         } : null,
         ValidationErrors: validationErrors
+    };
+}
+
+function configurationPreview({ removals = 0 } = {}) {
+    return {
+        Outcome: 'Ready',
+        Authorization: {
+            Authorization: 'opaque-configuration-authorization',
+            ExpiresAtUtc: '2026-08-09T20:00:00Z',
+            Preview: {
+                TotalItemCount: 1,
+                Items: [{
+                    ItemId: directItemId,
+                    ItemTitle: 'Waltney Adventure',
+                    ItemKind: 'Movie',
+                    Mutations: removals > 0
+                        ? [{ Kind: 'RemoveTag', Target: { Kind: 0, TagValue: 'Kid-Approved' } }]
+                        : [{ Kind: 'AddTag', Target: { Kind: 0, TagValue: 'Kid-Approved' } }]
+                }]
+            }
+        },
+        ValidationErrors: []
     };
 }
 
@@ -278,6 +308,279 @@ test('editor input invalidates a rendered preview and blocks stale confirmation'
 
     assert.equal(calls.filter(call => call.path.endsWith('/Confirm')).length, 0);
     assert.match(view.querySelector('#collectionTagSyncRunOnceStatus').textContent, /preview is stale/i);
+});
+
+test('configuration actions explain the branching save and preview workflow', async () => {
+    const html = await readFile(new URL(
+        '../../Jellyfin.Plugin.CollectionTagSync/Configuration/configPage.html',
+        import.meta.url), 'utf8');
+
+    assert.match(html, /<span>Save configuration<\/span>/);
+    assert.match(html, /<span>Preview changes<\/span>/);
+    assert.match(html, /<span>Confirm removals and save<\/span>/);
+    assert.match(html, /Preview changes does not save/i);
+    assert.match(html, /metadata changes settle in the background/i);
+    assert.match(html, /id="collectionTagSyncConfigurationPreview"[^>]+tabindex="-1"/);
+    assert.doesNotMatch(html, /Validate and save|Preview candidate configuration|Confirm previewed configuration/);
+});
+
+test('removal-free save reports configuration acceptance before background settlement', async () => {
+    const { calls, view } = createHarness(async path => {
+        if (path === 'CollectionTagSync/Configuration') {
+            return { Outcome: 'Accepted', ActiveRevision: 2, ReconciliationId: directItemId };
+        }
+
+        if (path.includes('/Reconciliations/')) {
+            return { State: 'Queued', CompletedItemCount: 0, TotalItemCount: 1, FailedItemCount: 0 };
+        }
+
+        return {};
+    });
+
+    await view.dispatch('click', button('save-configuration'));
+
+    assert.equal(calls.filter(call => call.path === 'CollectionTagSync/Configuration').length, 1);
+    assert.equal(calls.filter(call => call.path.endsWith('/Preview')).length, 0);
+    assert.match(view.querySelector('#collectionTagSyncConfigurationStatus').textContent, /configuration saved/i);
+    assert.match(view.querySelector('#collectionTagSyncConfigurationStatus').textContent, /background/i);
+    assert.equal(view.querySelector('[data-action="save-configuration"]').hidden, false);
+    assert.equal(view.querySelector('[data-action="confirm-configuration"]').hidden, true);
+});
+
+test('save that requires approval opens preview and replaces save with explicit confirmation', async () => {
+    const { calls, view } = createHarness(async path => {
+        if (path === 'CollectionTagSync/Configuration') {
+            throw { json: async () => ({ Outcome: 'RequiresPreview' }) };
+        }
+
+        if (path === 'CollectionTagSync/Configuration/Preview') {
+            return configurationPreview({ removals: 1 });
+        }
+
+        if (path === 'CollectionTagSync/Configuration/Confirm') {
+            return { Outcome: 'Accepted', ActiveRevision: 2, ReconciliationId: directItemId };
+        }
+
+        if (path.includes('/Reconciliations/')) {
+            return { State: 'Queued', CompletedItemCount: 0, TotalItemCount: 1, FailedItemCount: 0 };
+        }
+
+        return {};
+    });
+
+    await view.dispatch('click', button('save-configuration'));
+
+    assert.deepEqual(
+        calls.slice(0, 2).map(call => call.path),
+        ['CollectionTagSync/Configuration', 'CollectionTagSync/Configuration/Preview']);
+    assert.equal(view.querySelector('[data-action="save-configuration"]').hidden, true);
+    assert.equal(view.querySelector('[data-action="confirm-configuration"]').hidden, false);
+    assert.equal(view.querySelector('#collectionTagSyncConfigurationPreview').focused, true);
+    assert.match(view.querySelector('#collectionTagSyncConfigurationStatus').textContent, /no changes.*saved/i);
+    assert.match(view.querySelector('#collectionTagSyncConfigurationStatus').textContent, /confirm removals and save/i);
+
+    await view.dispatch('click', button('confirm-configuration'));
+
+    assert.equal(calls.filter(call => call.path.endsWith('/Confirm')).length, 1);
+    assert.equal(view.querySelector('[data-action="save-configuration"]').hidden, false);
+    assert.equal(view.querySelector('[data-action="confirm-configuration"]').hidden, true);
+    assert.match(view.querySelector('#collectionTagSyncConfigurationStatus').textContent, /configuration saved/i);
+    assert.match(view.querySelector('#collectionTagSyncConfigurationStatus').textContent, /background/i);
+});
+
+test('optional removal-free preview saves nothing and retains normal save action', async () => {
+    const { calls, view } = createHarness(async path =>
+        path === 'CollectionTagSync/Configuration/Preview'
+            ? configurationPreview()
+            : {});
+
+    await view.dispatch('click', button('preview-configuration'));
+
+    assert.equal(calls.filter(call => call.path === 'CollectionTagSync/Configuration').length, 0);
+    assert.equal(view.querySelector('[data-action="save-configuration"]').hidden, false);
+    assert.equal(view.querySelector('[data-action="confirm-configuration"]').hidden, true);
+    assert.match(view.querySelector('#collectionTagSyncConfigurationStatus').textContent, /no changes.*saved/i);
+    assert.match(view.querySelector('#collectionTagSyncConfigurationStatus').textContent, /save configuration/i);
+});
+
+test('editing after a destructive preview restores save and removes stale confirmation', async () => {
+    const { view } = createHarness(async path =>
+        path === 'CollectionTagSync/Configuration/Preview'
+            ? configurationPreview({ removals: 1 })
+            : {});
+    await view.dispatch('click', button('preview-configuration'));
+    const editedSetting = new FakeElement({ closest: { '#collectionTagSyncMappings': {} } });
+
+    await view.dispatch('input', editedSetting);
+
+    assert.equal(view.querySelector('[data-action="save-configuration"]').hidden, false);
+    assert.equal(view.querySelector('[data-action="confirm-configuration"]').hidden, true);
+    assert.equal(view.querySelector('#collectionTagSyncConfigurationPreview').hidden, true);
+    assert.match(view.querySelector('#collectionTagSyncConfigurationStatus').textContent, /configuration changed/i);
+});
+
+test('failed replacement preview removes the prior destructive authorization and preview', async () => {
+    let previewCount = 0;
+    const { view } = createHarness(async path => {
+        if (path !== 'CollectionTagSync/Configuration/Preview') {
+            return {};
+        }
+
+        previewCount++;
+        if (previewCount === 1) {
+            return configurationPreview({ removals: 1 });
+        }
+
+        throw { json: async () => ({ ValidationErrors: [{ Message: 'Candidate is no longer valid.' }] }) };
+    });
+    await view.dispatch('click', button('preview-configuration'));
+
+    await view.dispatch('click', button('preview-configuration'));
+
+    assert.equal(view.querySelector('[data-action="save-configuration"]').hidden, false);
+    assert.equal(view.querySelector('[data-action="confirm-configuration"]').hidden, true);
+    assert.equal(view.querySelector('#collectionTagSyncConfigurationPreview').hidden, true);
+    assert.equal(view.querySelector('#collectionTagSyncConfigurationStatus').textContent, 'Candidate is no longer valid.');
+});
+
+test('replacement preview invalidates prior confirmation before the request completes', async () => {
+    let previewCount = 0;
+    let finishReplacement;
+    const replacementResponse = new Promise(resolve => {
+        finishReplacement = resolve;
+    });
+    const { calls, view } = createHarness(async path => {
+        if (path !== 'CollectionTagSync/Configuration/Preview') {
+            return {};
+        }
+
+        previewCount++;
+        return previewCount === 1
+            ? configurationPreview({ removals: 1 })
+            : replacementResponse;
+    });
+    await view.dispatch('click', button('preview-configuration'));
+
+    const replacement = view.dispatch('click', button('preview-configuration'));
+    await Promise.resolve();
+    await view.dispatch('click', button('confirm-configuration'));
+
+    assert.equal(calls.filter(call => call.path.endsWith('/Confirm')).length, 0);
+    assert.equal(view.querySelector('[data-action="confirm-configuration"]').hidden, true);
+    assert.equal(view.querySelector('#collectionTagSyncConfigurationPreview').hidden, true);
+    finishReplacement(configurationPreview({ removals: 1 }));
+    await replacement;
+});
+
+test('ordinary typing without an active preview does not rewrite the polite status region', async () => {
+    const { view } = createHarness();
+    const status = view.querySelector('#collectionTagSyncConfigurationStatus');
+    status.textContent = 'Existing status.';
+    const editedSetting = new FakeElement({ closest: { '#collectionTagSyncMappings': {} } });
+
+    await view.dispatch('input', editedSetting);
+
+    assert.equal(status.textContent, 'Existing status.');
+});
+
+test('editing while a preview request is pending ignores its late response', async () => {
+    let finishPreview;
+    const previewResponse = new Promise(resolve => {
+        finishPreview = resolve;
+    });
+    const { view } = createHarness(async path =>
+        path === 'CollectionTagSync/Configuration/Preview' ? previewResponse : {});
+
+    const pendingPreview = view.dispatch('click', button('preview-configuration'));
+    await Promise.resolve();
+    const editedSetting = new FakeElement({ closest: { '#collectionTagSyncMappings': {} } });
+    await view.dispatch('input', editedSetting);
+    finishPreview(configurationPreview({ removals: 1 }));
+    await pendingPreview;
+
+    assert.equal(view.querySelector('[data-action="save-configuration"]').hidden, false);
+    assert.equal(view.querySelector('[data-action="confirm-configuration"]').hidden, true);
+    assert.equal(view.querySelector('#collectionTagSyncConfigurationPreview').hidden, true);
+    assert.match(view.querySelector('#collectionTagSyncConfigurationStatus').textContent, /configuration changed/i);
+});
+
+test('edits made during save remain visibly unsaved after the older candidate is accepted', async () => {
+    let finishSave;
+    const saveResponse = new Promise(resolve => {
+        finishSave = resolve;
+    });
+    const { calls, view } = createHarness(async path =>
+        path === 'CollectionTagSync/Configuration' ? saveResponse : {});
+
+    const pendingSave = view.dispatch('click', button('save-configuration'));
+    await Promise.resolve();
+    assert.equal(view.querySelector('[data-action="save-configuration"]').disabled, true);
+    await view.dispatch('click', button('save-configuration'));
+    const editedSetting = new FakeElement({ closest: { '#collectionTagSyncMappings': {} } });
+    await view.dispatch('input', editedSetting);
+    finishSave({ Outcome: 'Accepted', ActiveRevision: 2, ReconciliationId: null });
+    await pendingSave;
+
+    assert.equal(calls.filter(call => call.path === 'CollectionTagSync/Configuration').length, 1);
+    assert.equal(view.querySelector('[data-action="save-configuration"]').disabled, false);
+    assert.equal(view.querySelector('[data-action="save-configuration"]').hidden, false);
+    assert.match(view.querySelector('#collectionTagSyncConfigurationStatus').textContent, /earlier configuration.*saved/i);
+    assert.match(view.querySelector('#collectionTagSyncConfigurationStatus').textContent, /current edits.*unsaved/i);
+});
+
+test('edits made during confirmation remain visibly unsaved after the older candidate is accepted', async () => {
+    let finishConfirmation;
+    const confirmationResponse = new Promise(resolve => {
+        finishConfirmation = resolve;
+    });
+    const { calls, view } = createHarness(async path => {
+        if (path === 'CollectionTagSync/Configuration/Preview') {
+            return configurationPreview({ removals: 1 });
+        }
+
+        if (path === 'CollectionTagSync/Configuration/Confirm') {
+            return confirmationResponse;
+        }
+
+        return {};
+    });
+    await view.dispatch('click', button('preview-configuration'));
+
+    const pendingConfirmation = view.dispatch('click', button('confirm-configuration'));
+    await Promise.resolve();
+    assert.equal(view.querySelector('[data-action="confirm-configuration"]').disabled, true);
+    await view.dispatch('click', button('confirm-configuration'));
+    const editedSetting = new FakeElement({ closest: { '#collectionTagSyncMappings': {} } });
+    await view.dispatch('input', editedSetting);
+    finishConfirmation({ Outcome: 'Accepted', ActiveRevision: 2, ReconciliationId: null });
+    await pendingConfirmation;
+
+    assert.equal(calls.filter(call => call.path.endsWith('/Confirm')).length, 1);
+    assert.equal(view.querySelector('[data-action="confirm-configuration"]').disabled, false);
+    assert.equal(view.querySelector('[data-action="confirm-configuration"]').hidden, true);
+    assert.equal(view.querySelector('[data-action="save-configuration"]').hidden, false);
+    assert.match(view.querySelector('#collectionTagSyncConfigurationStatus').textContent, /earlier configuration.*saved/i);
+    assert.match(view.querySelector('#collectionTagSyncConfigurationStatus').textContent, /current edits.*unsaved/i);
+});
+
+test('late save error does not overwrite the newer unsaved-editor status', async () => {
+    let rejectSave;
+    const saveResponse = new Promise((_resolve, reject) => {
+        rejectSave = reject;
+    });
+    const { view } = createHarness(async path =>
+        path === 'CollectionTagSync/Configuration' ? saveResponse : {});
+    const pendingSave = view.dispatch('click', button('save-configuration'));
+    await Promise.resolve();
+    const editedSetting = new FakeElement({ closest: { '#collectionTagSyncMappings': {} } });
+    await view.dispatch('input', editedSetting);
+
+    rejectSave({ json: async () => ({ ValidationErrors: [{ Message: 'Old request failed.' }] }) });
+    await pendingSave;
+
+    assert.match(view.querySelector('#collectionTagSyncConfigurationStatus').textContent, /configuration changed/i);
+    assert.doesNotMatch(view.querySelector('#collectionTagSyncConfigurationStatus').textContent, /old request failed/i);
+    assert.equal(view.querySelector('[data-action="save-configuration"]').disabled, false);
 });
 
 test('two exclusion checkbox input/change sequences retain both IDs in the next request', async () => {
