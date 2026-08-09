@@ -1,5 +1,4 @@
 using System;
-using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Jellyfin.Plugin.CollectionTagSync.Application;
@@ -18,7 +17,6 @@ namespace Jellyfin.Plugin.CollectionTagSync.Api;
 [Route("CollectionTagSync/FullReconcile")]
 public sealed class FullReconcileController : ControllerBase
 {
-    private const string JellyfinUserIdClaim = "Jellyfin-UserId";
     private readonly FullReconcileStatusStore _statusStore;
     private readonly FullReconcileSafetyService _safetyService;
     private readonly FullReconcileApprovalService _approvalService;
@@ -61,7 +59,7 @@ public sealed class FullReconcileController : ControllerBase
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     public ActionResult<FullReconcilePreviewAuthorization> CreatePreviewAuthorization(Guid runId)
     {
-        var administratorId = GetAdministratorId();
+        var administratorId = AdministratorIdentity.Get(User);
         if (administratorId == Guid.Empty)
         {
             return Unauthorized();
@@ -89,7 +87,7 @@ public sealed class FullReconcileController : ControllerBase
     {
         ArgumentNullException.ThrowIfNull(request);
 
-        var administratorId = GetAdministratorId();
+        var administratorId = AdministratorIdentity.Get(User);
         if (administratorId == Guid.Empty)
         {
             return Unauthorized();
@@ -101,14 +99,5 @@ public sealed class FullReconcileController : ControllerBase
         return result.Outcome == FullReconcileConfirmationOutcome.Accepted
             ? Ok(result)
             : Conflict(result);
-    }
-
-    private Guid GetAdministratorId()
-    {
-        var value = User.Claims.FirstOrDefault(claim => string.Equals(
-            claim.Type,
-            JellyfinUserIdClaim,
-            StringComparison.OrdinalIgnoreCase))?.Value;
-        return Guid.TryParse(value, out var administratorId) ? administratorId : Guid.Empty;
     }
 }

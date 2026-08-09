@@ -22,22 +22,10 @@ public static class PluginConfigurationMapper
         {
             group ??= new MappingGroupConfiguration();
             return new MappingGroupDefinition(
-                ToDefinition(group.Target ?? new MappingNodeConfiguration()),
-                (group.Sources ?? []).Select(ToDefinition),
+                MappingNodeConfigurationMapper.ToDefinition(group.Target),
+                (group.Sources ?? []).Select(MappingNodeConfigurationMapper.ToDefinition),
                 group.Policy,
                 group.IsEnabled);
         }));
-    }
-
-    private static NodeDefinition ToDefinition(MappingNodeConfiguration node)
-    {
-        return node.Kind switch
-        {
-            MappingNodeKind.Tag => new TagNodeDefinition(node.TagValue),
-            MappingNodeKind.Collection => new CollectionNodeDefinition(
-                node.CollectionId,
-                node.CollectionDisplayName),
-            _ => new TagNodeDefinition(null),
-        };
     }
 }

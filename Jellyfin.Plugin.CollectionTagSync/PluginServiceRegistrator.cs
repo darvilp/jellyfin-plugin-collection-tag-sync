@@ -27,6 +27,7 @@ public sealed class PluginServiceRegistrator : IPluginServiceRegistrator
         serviceCollection.AddSingleton<BackgroundReconciliationStatusStore>();
         serviceCollection.AddSingleton<ConfigurationReconciliationDispatcher>();
         serviceCollection.AddSingleton<ConfigurationActivationService>();
+        serviceCollection.AddSingleton<RunOnceService>();
         serviceCollection.AddSingleton<ItemReconciler>();
         serviceCollection.AddSingleton<IncrementalReconciliationOptions>();
         serviceCollection.AddSingleton<FullReconcileRequestStore>();

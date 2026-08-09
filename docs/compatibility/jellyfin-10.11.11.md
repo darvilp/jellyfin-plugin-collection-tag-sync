@@ -2,7 +2,7 @@
 
 **Validated:** 2026-08-09
 
-**Scope:** Phase 1 integration spike through Phase 6A destructive configuration activation
+**Scope:** Phase 1 integration spike through Phase 6B run-once execution
 
 ## Pinned compatibility set
 
@@ -127,6 +127,15 @@ not used.
   proves accepted plans do not re-read changed state before execution, and a
   partial item-write failure leaves the accepted revision active for later Full
   Reconcile repair.
+- The elevated run-once API previewed and executed an Additive tag-to-collection
+  bootstrap while continuous mappings remained enabled. Its exact background
+  plan added the direct collection membership, then settled a downstream tag
+  and collection in the same plan. The active revision and its two persisted
+  mapping groups remained unchanged; no run-once edge was saved.
+- A changed Authoritative collection-removal tuple returned HTTP 409 without a
+  write. A fresh preview with `Keep current target state` retained the observed
+  collection membership, executed through the shared background worker, and
+  remained an ephemeral authorization-bound exclusion.
 
 The package verifier confirmed that the ZIP contains exactly the plugin DLL
 and JPRM `meta.json`, with version `0.1.0.0`, the permanent GUID, and target ABI
@@ -150,13 +159,14 @@ bash scripts/test-configuration-activation.sh
 bash scripts/test-full-reconcile.sh
 bash scripts/test-destructive-circuit-breaker.sh
 bash scripts/test-configuration-preview.sh
+bash scripts/test-run-once.sh
 bash scripts/test-manifest-install.sh
 ```
 
 Validated results:
 
 - build: zero warnings and zero errors;
-- tests: 138 passed, 0 failed;
+- tests: 153 passed, 0 failed;
 - event observation: all four subscribed event types observed;
 - persistence/API contract: passed across two restarts;
 - walking slice: Movie and Series added once each, then settled at zero delta;
@@ -177,6 +187,9 @@ Validated results:
   removal binding, changed-removal rejection without persistence, restart
   invalidation, addition-only drift, background activation, and single-use
   enforcement passed;
+- run-once: Additive tag-to-collection bootstrap, two-hop continuous cascade,
+  exact background execution, unchanged persisted graph/revision,
+  changed-removal rejection, and ephemeral direct-target exclusion passed;
 - manual package install: passed;
 - temporary-manifest catalog install: passed.
 
@@ -192,10 +205,13 @@ Validated results:
   excessive Authoritative-removal plans atomically and executes only a freshly
   recomputed equivalent plan with current administrator confirmation. Phase 6A
   applies the same fresh-plan authorization rules before a destructive complete
-  configuration candidate can become active.
-- The create endpoint's independent persistence was proven. Cancellation and
-  save-failure behavior around the future application workflow remains an
-  application-level test for the run-once/configuration phase.
+  configuration candidate can become active. Phase 6B stages run-once planning
+  outside the persisted graph, settles only affected downstream continuous
+  mappings, binds exclusions to authorization, and dispatches the recomputed
+  exact plan without changing the active revision.
+- The create endpoint's independent persistence was proven. Picker-only
+  selection, duplicate-name recovery, and cancellation/save-failure behavior
+  around the administration workflow remain later UI/application work.
 - This environment proves Jellyfin 10.11.11 on Linux containers in WSL. It does
   not claim native Windows-server or older-Jellyfin compatibility.
 - Upgrade behavior from a prior released plugin version remains a release smoke
