@@ -13,6 +13,76 @@ namespace Jellyfin.Plugin.CollectionTagSync.Tests.Application;
 public sealed class ReconciliationFailureContainmentTests
 {
     [Fact]
+    public async Task ItemQueuedBeforeQuarantineIsSkippedInsteadOfHotRetried()
+    {
+        var itemId = new Guid("ee6f9164-5510-4027-8f1f-2af14786c13a");
+        var configuration = Assert.IsType<MappingConfiguration>(MappingConfiguration.Create(
+            [
+                new MappingGroupDefinition(
+                    new TagNodeDefinition("Target"),
+                    [new TagNodeDefinition("Source")],
+                    MappingPolicy.Additive,
+                    isEnabled: true),
+            ]).Configuration);
+        var reader = new CountingNullStateReader();
+        using var worker = new ReconciliationWorker(
+            new ItemReconciler(
+                new FixedConfigurationProvider(configuration),
+                reader,
+                new RejectingWriter()),
+            new IncrementalReconciliationOptions(),
+            new FullReconcileRequestStore(),
+            NullLogger<ReconciliationWorker>.Instance);
+        worker.MarkDirty(itemId);
+        ((IFailedItemQuarantine)worker).Quarantine(itemId);
+
+        Assert.Equal(0, worker.Status.QueuedItemCount);
+        Assert.Equal(1, worker.Status.QuarantinedItemCount);
+        await worker.StartAsync(CancellationToken.None).ConfigureAwait(true);
+        await Task.Delay(50).ConfigureAwait(true);
+        await worker.StopAsync(CancellationToken.None).ConfigureAwait(true);
+
+        Assert.Equal(0, reader.ReadCount);
+    }
+
+    [Fact]
+    public async Task ItemQuarantinedWhileWaitingForFullReconcileGateIsNotRetried()
+    {
+        var itemId = new Guid("f90f97d2-4245-434b-ae84-c7a7b532e205");
+        var configuration = Assert.IsType<MappingConfiguration>(MappingConfiguration.Create(
+            [
+                new MappingGroupDefinition(
+                    new TagNodeDefinition("Target"),
+                    [new TagNodeDefinition("Source")],
+                    MappingPolicy.Additive,
+                    isEnabled: true),
+            ]).Configuration);
+        var reader = new CountingNullStateReader();
+        var executionGate = new ReconciliationExecutionGate();
+        await executionGate.EnterAsync(CancellationToken.None).ConfigureAwait(true);
+        using var worker = new ReconciliationWorker(
+            new ItemReconciler(
+                new FixedConfigurationProvider(configuration),
+                reader,
+                new RejectingWriter()),
+            new IncrementalReconciliationOptions(),
+            new FullReconcileRequestStore(),
+            executionGate,
+            NullLogger<ReconciliationWorker>.Instance);
+        worker.MarkDirty(itemId);
+        await worker.StartAsync(CancellationToken.None).ConfigureAwait(true);
+        await WaitUntilAsync(() => worker.Status.RunningItemCount == 1).ConfigureAwait(true);
+
+        ((IFailedItemQuarantine)worker).Quarantine(itemId);
+        executionGate.Exit();
+        await WaitUntilAsync(() => worker.Status.RunningItemCount == 0).ConfigureAwait(true);
+        await worker.StopAsync(CancellationToken.None).ConfigureAwait(true);
+
+        Assert.Equal(0, reader.ReadCount);
+        Assert.Equal(1, worker.Status.QuarantinedItemCount);
+    }
+
+    [Fact]
     public async Task FailedItemKeepsPartialStateIsQuarantinedAndDoesNotBlockNextItem()
     {
         var firstCollectionId = new Guid("00000000-0000-0000-0000-000000000101");
@@ -63,7 +133,7 @@ public sealed class ReconciliationFailureContainmentTests
             Assert.Equal(1, worker.Status.QuarantinedItemCount);
             Assert.Equal(0, worker.Status.QueuedItemCount);
 
-            worker.ResetAfterFullReconcile();
+            worker.CompleteFullReconcile([failedItemId], []);
             worker.MarkDirty(failedItemId);
             Assert.Equal(0, worker.Status.QuarantinedItemCount);
             Assert.Equal(1, worker.Status.QueuedItemCount);
@@ -197,6 +267,28 @@ public sealed class ReconciliationFailureContainmentTests
             }
 
             return Task.CompletedTask;
+        }
+    }
+
+    private sealed class CountingNullStateReader : IItemStateReader
+    {
+        public int ReadCount { get; private set; }
+
+        public Task<ObservedItemState?> ReadAsync(
+            Guid itemId,
+            MappingConfiguration configuration,
+            CancellationToken cancellationToken)
+        {
+            ReadCount++;
+            return Task.FromResult<ObservedItemState?>(null);
+        }
+    }
+
+    private sealed class RejectingWriter : IPlanWriter
+    {
+        public Task ApplyAsync(ReconciliationPlan plan, CancellationToken cancellationToken)
+        {
+            throw new InvalidOperationException("A quarantined item must never reach the writer.");
         }
     }
 }

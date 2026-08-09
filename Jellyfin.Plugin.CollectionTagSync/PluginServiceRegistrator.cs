@@ -1,3 +1,4 @@
+using System;
 using Jellyfin.Plugin.CollectionTagSync.Application;
 using MediaBrowser.Controller;
 using MediaBrowser.Controller.Plugins;
@@ -29,7 +30,11 @@ public sealed class PluginServiceRegistrator : IPluginServiceRegistrator
         serviceCollection.AddSingleton<ItemReconciler>();
         serviceCollection.AddSingleton<IncrementalReconciliationOptions>();
         serviceCollection.AddSingleton<FullReconcileRequestStore>();
+        serviceCollection.AddSingleton<FullReconcileStatusStore>();
         serviceCollection.AddSingleton<ReconciliationExecutionGate>();
+        serviceCollection.AddSingleton(TimeProvider.System);
+        serviceCollection.AddSingleton<IReconciliationDelay, SystemReconciliationDelay>();
+        serviceCollection.AddSingleton<IReconciliationActivityMonitor, ReconciliationActivityMonitor>();
         serviceCollection.AddHostedService<MappingDiagnosticInitializer>();
         serviceCollection.AddSingleton<ReconciliationWorker>();
         serviceCollection.AddSingleton<IDirtyItemSink>(
@@ -41,6 +46,8 @@ public sealed class PluginServiceRegistrator : IPluginServiceRegistrator
         serviceCollection.AddHostedService(
             serviceProvider => serviceProvider.GetRequiredService<ReconciliationWorker>());
         serviceCollection.AddHostedService<ConfigurationReconciliationWorker>();
+        serviceCollection.AddHostedService<FullReconciliationWorker>();
         serviceCollection.AddHostedService<JellyfinEventObserver>();
+        serviceCollection.AddHostedService<StartupReconciliationWorker>();
     }
 }

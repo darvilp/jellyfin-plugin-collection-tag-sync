@@ -61,6 +61,15 @@ public sealed class ConfigurationActivationService : IDisposable
         try
         {
             var current = _persistence.Current;
+            if (!StartupReconcileOptions.IsValidDelay(candidate.StartupReconcileDelayMinutes))
+            {
+                return Invalid(
+                    current.Revision,
+                    [new ConfigurationActivationError(
+                        ConfigurationActivationErrorCode.InvalidCandidate,
+                        $"Startup Full Reconcile delay must be between 0 and {StartupReconcileOptions.MaximumDelayMinutes} minutes.")]);
+            }
+
             var validation = PluginConfigurationMapper.ToDomain(candidate);
             if (validation.Configuration is null)
             {
@@ -194,6 +203,7 @@ public sealed class ConfigurationActivationService : IDisposable
         {
             SchemaVersion = candidate.SchemaVersion,
             Revision = revision,
+            StartupReconcileDelayMinutes = candidate.StartupReconcileDelayMinutes,
             MappingGroups = (candidate.MappingGroups ?? [])
                 .Where(group => group is not null)
                 .Select(group => new MappingGroupConfiguration

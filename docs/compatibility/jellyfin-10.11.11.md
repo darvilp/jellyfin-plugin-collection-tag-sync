@@ -2,7 +2,7 @@
 
 **Validated:** 2026-08-09
 
-**Scope:** Phase 1 integration spike through Phase 4C configuration activation
+**Scope:** Phase 1 integration spike through Phase 5A Full Reconcile recovery
 
 ## Pinned compatibility set
 
@@ -89,6 +89,22 @@ not used.
   re-resolve collection availability fail closed at execution time, and yield
   the shared mutation boundary between items so a later save does not wait for
   the prior request's complete metadata settlement.
+- Jellyfin discovered the public `IScheduledTask` implementation as
+  `Collection Tag Sync: Full Reconcile`. It is visible, enabled, logged, and
+  has no automatic default trigger; administrators can run it manually or add
+  their own Jellyfin schedule. This matches Jellyfin's
+  [`IScheduledTask` contract](https://github.com/jellyfin/jellyfin/blob/1fbd8739292cce610231be93daf43368733edf63/MediaBrowser.Model/Tasks/IScheduledTask.cs)
+  and runtime task discovery.
+- Full Reconcile enumerated both eligible fixtures, calculated every item plan
+  before writing, and repaired drift created while the plugin was offline: a
+  missing Movie target was added and an unsupported Authoritative Series target
+  was removed. The task completed with `Total=2 Succeeded=2 Failed=0`.
+- A zero-minute startup delay still waited for Jellyfin core readiness, then
+  queued exactly one coalesced startup run. Startup and storm recovery use
+  Jellyfin's
+  [`ILibraryManager.IsScanRunning`](https://github.com/jellyfin/jellyfin/blob/1fbd8739292cce610231be93daf43368733edf63/MediaBrowser.Controller/Library/ILibraryManager.cs)
+  plus a ten-second eligible-event settling window before claiming the pending
+  bulk request.
 
 The package verifier confirmed that the ZIP contains exactly the plugin DLL
 and JPRM `meta.json`, with version `0.1.0.0`, the permanent GUID, and target ABI
@@ -109,13 +125,14 @@ bash scripts/test-jellyfin-contracts.sh
 bash scripts/test-walking-slice.sh
 bash scripts/test-continuous-adapters.sh
 bash scripts/test-configuration-activation.sh
+bash scripts/test-full-reconcile.sh
 bash scripts/test-manifest-install.sh
 ```
 
 Validated results:
 
 - build: zero warnings and zero errors;
-- tests: 76 passed, 0 failed;
+- tests: 100 passed, 0 failed;
 - event observation: all four subscribed event types observed;
 - persistence/API contract: passed across two restarts;
 - walking slice: Movie and Series added once each, then settled at zero delta;
@@ -126,6 +143,9 @@ Validated results:
   revision, authoritative-route enforcement, asynchronous settlement,
   invalid-candidate preservation, destructive pause, and restart persistence
   passed;
+- Full Reconcile: Jellyfin scheduled-task discovery, manual invocation,
+  offline addition/removal repair, terminal summary, and one zero-delay startup
+  recovery passed;
 - manual package install: passed;
 - temporary-manifest catalog install: passed.
 
@@ -135,10 +155,10 @@ Validated results:
   collection writer emit self-events and settle to a zero-delta second pass.
   Phase 4A extends that proof to direct tag writes, collection removals, and
   fail-closed missing references. Phase 4B contains incremental failures and
-  produces the bounded event-storm request; issue #10 must consume that request
-  through Full Reconcile. Phase 4C activates removal-free configurations and
-  exposes background status; destructive confirmation remains reserved for the
-  later preview/authorization phase.
+  produces the bounded event-storm request. Phase 4C activates removal-free
+  configurations and exposes background status. Phase 5A consumes coalesced
+  manual, startup, and storm requests through Full Reconcile; destructive
+  circuit-breaking and confirmation remain reserved for the next phase.
 - The create endpoint's independent persistence was proven. Cancellation and
   save-failure behavior around the future application workflow remains an
   application-level test for the run-once/configuration phase.

@@ -128,13 +128,18 @@ public sealed partial class ReconciliationWorker : BackgroundService, IDirtyItem
     }
 
     /// <inheritdoc />
-    public void ResetAfterFullReconcile()
+    public void CompleteFullReconcile(
+        IEnumerable<Guid> repairedItemIds,
+        IEnumerable<Guid> failedItemIds)
     {
+        ArgumentNullException.ThrowIfNull(repairedItemIds);
+        ArgumentNullException.ThrowIfNull(failedItemIds);
+
         lock (_sync)
         {
-            _quarantined.Clear();
+            _quarantined.ExceptWith(repairedItemIds);
+            _quarantined.UnionWith(failedItemIds);
             _stormFallbackActive = false;
-            _fullReconcileRequests.Clear();
         }
     }
 
@@ -153,12 +158,21 @@ public sealed partial class ReconciliationWorker : BackgroundService, IDirtyItem
     {
         await foreach (var itemId in _queue.Reader.ReadAllAsync(stoppingToken).ConfigureAwait(false))
         {
-            BeginItem(itemId);
+            if (!BeginItem(itemId))
+            {
+                continue;
+            }
+
             var gateEntered = false;
             try
             {
                 await _executionGate.EnterAsync(stoppingToken).ConfigureAwait(false);
                 gateEntered = true;
+                if (IsQuarantined(itemId))
+                {
+                    continue;
+                }
+
                 var plan = await _reconciler.ReconcileAsync(itemId, stoppingToken).ConfigureAwait(false);
                 if (plan is null)
                 {
@@ -195,12 +209,17 @@ public sealed partial class ReconciliationWorker : BackgroundService, IDirtyItem
         }
     }
 
-    private void BeginItem(Guid itemId)
+    private bool BeginItem(Guid itemId)
     {
         lock (_sync)
         {
-            _pending.Remove(itemId);
+            if (!_pending.Remove(itemId) || _quarantined.Contains(itemId))
+            {
+                return false;
+            }
+
             _running.Add(itemId);
+            return true;
         }
     }
 
@@ -223,11 +242,20 @@ public sealed partial class ReconciliationWorker : BackgroundService, IDirtyItem
         }
     }
 
+    private bool IsQuarantined(Guid itemId)
+    {
+        lock (_sync)
+        {
+            return _quarantined.Contains(itemId);
+        }
+    }
+
     private void QuarantineItem(Guid itemId)
     {
         lock (_sync)
         {
             _quarantined.Add(itemId);
+            _pending.Remove(itemId);
             _rerunRequested.Remove(itemId);
         }
     }
