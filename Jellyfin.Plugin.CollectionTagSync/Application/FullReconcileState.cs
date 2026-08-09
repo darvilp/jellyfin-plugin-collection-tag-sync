@@ -14,6 +14,9 @@ public enum FullReconcileState
     /// <summary>The run is applying its calculated plans.</summary>
     Applying,
 
+    /// <summary>The complete plan exceeded destructive limits and awaits current administrator approval.</summary>
+    AwaitingApproval,
+
     /// <summary>The run completed without item failures.</summary>
     Completed,
 

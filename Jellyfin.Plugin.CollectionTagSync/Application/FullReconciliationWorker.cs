@@ -23,6 +23,7 @@ internal sealed partial class FullReconciliationWorker : BackgroundService
     private readonly ReconciliationExecutionGate _executionGate;
     private readonly IIncrementalReconciliationControl _incrementalControl;
     private readonly IReconciliationActivityMonitor _activityMonitor;
+    private readonly FullReconcileSafetyService _safetyService;
     private readonly ILogger<FullReconciliationWorker> _logger;
 
     /// <summary>
@@ -36,6 +37,7 @@ internal sealed partial class FullReconciliationWorker : BackgroundService
     /// <param name="executionGate">The process-wide mutation gate.</param>
     /// <param name="incrementalControl">The incremental recovery boundary.</param>
     /// <param name="activityMonitor">The scan and event-activity monitor.</param>
+    /// <param name="safetyService">The destructive bulk-plan safety boundary.</param>
     /// <param name="logger">The logger.</param>
     public FullReconciliationWorker(
         FullReconcileRequestStore requestStore,
@@ -46,6 +48,7 @@ internal sealed partial class FullReconciliationWorker : BackgroundService
         ReconciliationExecutionGate executionGate,
         IIncrementalReconciliationControl incrementalControl,
         IReconciliationActivityMonitor activityMonitor,
+        FullReconcileSafetyService safetyService,
         ILogger<FullReconciliationWorker> logger)
     {
         _requestStore = requestStore;
@@ -56,6 +59,7 @@ internal sealed partial class FullReconciliationWorker : BackgroundService
         _executionGate = executionGate;
         _incrementalControl = incrementalControl;
         _activityMonitor = activityMonitor;
+        _safetyService = safetyService;
         _logger = logger;
     }
 
@@ -150,6 +154,26 @@ internal sealed partial class FullReconciliationWorker : BackgroundService
                         itemId,
                         FullReconcileState.Planning);
                 }
+            }
+
+            var safetyDecision = _safetyService.Evaluate(
+                request.Id,
+                request.Reasons,
+                itemIds.Length,
+                plans.Where(entry => entry.Plan is not null).Select(entry => entry.Plan!),
+                request.Confirmation);
+            if (safetyDecision != FullReconcileSafetyDecision.Proceed)
+            {
+                var paused = new FullReconcileRunResult(
+                    request.Id,
+                    FullReconcileState.AwaitingApproval,
+                    request.Reasons,
+                    itemIds.Length,
+                    succeededItemCount: 0,
+                    failedItemIds.Count);
+                _statusStore.Update(paused);
+                LogRunPaused(_logger, paused.Id, paused.TotalItemCount);
+                return paused;
             }
 
             _statusStore.Update(new FullReconcileRunResult(
@@ -260,4 +284,10 @@ internal sealed partial class FullReconciliationWorker : BackgroundService
         Level = LogLevel.Error,
         Message = "Collection Tag Sync Full Reconcile failed before item-level completion RunId={RunId}")]
     private static partial void LogRunFailure(ILogger logger, Exception exception, Guid runId);
+
+    [LoggerMessage(
+        EventId = 43,
+        Level = LogLevel.Warning,
+        Message = "Collection Tag Sync Full Reconcile paused before writes RunId={RunId} Total={TotalItemCount}")]
+    private static partial void LogRunPaused(ILogger logger, Guid runId, int totalItemCount);
 }

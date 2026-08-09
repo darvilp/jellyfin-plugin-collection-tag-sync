@@ -70,6 +70,28 @@ public sealed class ConfigurationActivationService : IDisposable
                         $"Startup Full Reconcile delay must be between 0 and {StartupReconcileOptions.MaximumDelayMinutes} minutes.")]);
             }
 
+            if (!DestructiveCircuitBreakerConfiguration.HasValidLimits(candidate))
+            {
+                return Invalid(
+                    current.Revision,
+                    [new ConfigurationActivationError(
+                        ConfigurationActivationErrorCode.InvalidCandidate,
+                        $"Destructive circuit-breaker limits require a nonnegative item limit, a percentage from 0 through 100, and a population floor of at least {DestructiveCircuitBreakerOptions.DefaultMinimumAssignmentPopulation}.")]);
+            }
+
+            var currentDisableIsAcknowledged = !current.DestructiveCircuitBreakerEnabled
+                && current.DestructiveCircuitBreakerDisableAcknowledged;
+            if (!candidate.DestructiveCircuitBreakerEnabled
+                && !candidate.DestructiveCircuitBreakerDisableAcknowledged
+                && !currentDisableIsAcknowledged)
+            {
+                return Invalid(
+                    current.Revision,
+                    [new ConfigurationActivationError(
+                        ConfigurationActivationErrorCode.InvalidCandidate,
+                        "Disabling the destructive circuit breaker requires explicit warning acknowledgment.")]);
+            }
+
             var validation = PluginConfigurationMapper.ToDomain(candidate);
             if (validation.Configuration is null)
             {
@@ -140,7 +162,10 @@ public sealed class ConfigurationActivationService : IDisposable
                 }
 
                 var nextRevision = checked(current.Revision + 1);
-                var accepted = CloneWithRevision(candidate, nextRevision);
+                var disableIsAcknowledged = !candidate.DestructiveCircuitBreakerEnabled
+                    && (candidate.DestructiveCircuitBreakerDisableAcknowledged
+                        || currentDisableIsAcknowledged);
+                var accepted = CloneWithRevision(candidate, nextRevision, disableIsAcknowledged);
                 _persistence.Save(accepted);
                 var reconciliationId = _reconciliationDispatcher.Enqueue(
                     nextRevision,
@@ -197,35 +222,16 @@ public sealed class ConfigurationActivationService : IDisposable
         }
     }
 
-    private static PluginConfiguration CloneWithRevision(PluginConfiguration candidate, long revision)
+    private static PluginConfiguration CloneWithRevision(
+        PluginConfiguration candidate,
+        long revision,
+        bool disableIsAcknowledged)
     {
-        return new PluginConfiguration
-        {
-            SchemaVersion = candidate.SchemaVersion,
-            Revision = revision,
-            StartupReconcileDelayMinutes = candidate.StartupReconcileDelayMinutes,
-            MappingGroups = (candidate.MappingGroups ?? [])
-                .Where(group => group is not null)
-                .Select(group => new MappingGroupConfiguration
-                {
-                    Target = CloneNode(group.Target),
-                    Sources = (group.Sources ?? []).Select(CloneNode).ToArray(),
-                    Policy = group.Policy,
-                    IsEnabled = group.IsEnabled,
-                })
-                .ToArray(),
-        };
-    }
-
-    private static MappingNodeConfiguration CloneNode(MappingNodeConfiguration node)
-    {
-        return new MappingNodeConfiguration
-        {
-            Kind = node.Kind,
-            TagValue = node.TagValue,
-            CollectionId = node.CollectionId,
-            CollectionDisplayName = node.CollectionDisplayName,
-        };
+        var accepted = PluginConfigurationCloner.Clone(candidate);
+        accepted.Revision = revision;
+        accepted.DestructiveCircuitBreakerDisableAcknowledged = disableIsAcknowledged;
+        accepted.PausedFullReconcile = null;
+        return accepted;
     }
 
     private sealed record CollectionReference(Node GroupTarget, Guid CollectionId, bool IsTarget);

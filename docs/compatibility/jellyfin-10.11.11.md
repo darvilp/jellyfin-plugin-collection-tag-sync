@@ -2,7 +2,7 @@
 
 **Validated:** 2026-08-09
 
-**Scope:** Phase 1 integration spike through Phase 5A Full Reconcile recovery
+**Scope:** Phase 1 integration spike through Phase 5B destructive Full Reconcile safety
 
 ## Pinned compatibility set
 
@@ -105,6 +105,16 @@ not used.
   [`ILibraryManager.IsScanRunning`](https://github.com/jellyfin/jellyfin/blob/1fbd8739292cce610231be93daf43368733edf63/MediaBrowser.Controller/Library/ILibraryManager.cs)
   plus a ten-second eligible-event settling window before claiming the pending
   bulk request.
+- With the configured absolute limit lowered to one item, a two-item
+  Authoritative-removal plan paused before either write. The elevated Full
+  Reconcile API exposed both item-level removal diagnostics, while the target
+  tags remained unchanged.
+- Jellyfin restart retained the non-executable paused diagnostics and
+  rehydrated `AwaitingApproval`, but invalidated the pre-restart authorization.
+  A fresh administrator-bound authorization recomputed the equivalent plan,
+  applied both removals, and was rejected when reused. Administrator identity
+  uses Jellyfin's case-insensitive `Jellyfin-UserId` claim, matching the current
+  [`ClaimsPrincipalExtensions` implementation](https://github.com/jellyfin/jellyfin/blob/1fbd8739292cce610231be93daf43368733edf63/Jellyfin.Api/Extensions/ClaimsPrincipalExtensions.cs).
 
 The package verifier confirmed that the ZIP contains exactly the plugin DLL
 and JPRM `meta.json`, with version `0.1.0.0`, the permanent GUID, and target ABI
@@ -126,13 +136,14 @@ bash scripts/test-walking-slice.sh
 bash scripts/test-continuous-adapters.sh
 bash scripts/test-configuration-activation.sh
 bash scripts/test-full-reconcile.sh
+bash scripts/test-destructive-circuit-breaker.sh
 bash scripts/test-manifest-install.sh
 ```
 
 Validated results:
 
 - build: zero warnings and zero errors;
-- tests: 100 passed, 0 failed;
+- tests: 129 passed, 0 failed;
 - event observation: all four subscribed event types observed;
 - persistence/API contract: passed across two restarts;
 - walking slice: Movie and Series added once each, then settled at zero delta;
@@ -146,6 +157,9 @@ Validated results:
 - Full Reconcile: Jellyfin scheduled-task discovery, manual invocation,
   offline addition/removal repair, terminal summary, and one zero-delay startup
   recovery passed;
+- destructive circuit breaker: configurable threshold pause, zero pre-approval
+  writes, persisted item-level diagnostics, restart invalidation and status
+  rehydration, fresh-plan confirmation, and single-use enforcement passed;
 - manual package install: passed;
 - temporary-manifest catalog install: passed.
 
@@ -157,8 +171,9 @@ Validated results:
   fail-closed missing references. Phase 4B contains incremental failures and
   produces the bounded event-storm request. Phase 4C activates removal-free
   configurations and exposes background status. Phase 5A consumes coalesced
-  manual, startup, and storm requests through Full Reconcile; destructive
-  circuit-breaking and confirmation remain reserved for the next phase.
+  manual, startup, and storm requests through Full Reconcile. Phase 5B pauses
+  excessive Authoritative-removal plans atomically and executes only a freshly
+  recomputed equivalent plan with current administrator confirmation.
 - The create endpoint's independent persistence was proven. Cancellation and
   save-failure behavior around the future application workflow remains an
   application-level test for the run-once/configuration phase.

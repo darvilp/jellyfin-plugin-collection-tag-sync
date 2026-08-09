@@ -22,13 +22,26 @@ internal sealed class FullReconcileRequest
             TaskCreationOptions.RunContinuationsAsynchronously);
     }
 
+    /// <summary>
+    /// Initializes a new instance of the <see cref="FullReconcileRequest"/> class for a consumed authorization.
+    /// </summary>
+    /// <param name="confirmation">The consumed in-process confirmation.</param>
+    public FullReconcileRequest(FullReconcileConfirmation confirmation)
+        : this()
+    {
+        Confirmation = confirmation;
+        Reasons = Array.AsReadOnly([FullReconcileRequestReason.Manual]);
+    }
+
     private FullReconcileRequest(
         Guid id,
         IEnumerable<FullReconcileRequestReason> reasons,
+        FullReconcileConfirmation? confirmation,
         TaskCompletionSource<FullReconcileRunResult> completion)
     {
         Id = id;
         Reasons = Array.AsReadOnly([.. reasons]);
+        Confirmation = confirmation;
         _completion = completion;
     }
 
@@ -42,6 +55,9 @@ internal sealed class FullReconcileRequest
     /// </summary>
     public IReadOnlyList<FullReconcileRequestReason> Reasons { get; }
 
+    /// <summary>Gets the consumed authorization carried by a confirmation run.</summary>
+    public FullReconcileConfirmation? Confirmation { get; }
+
     /// <summary>
     /// Gets the shared completion observed by all requesters in this batch.
     /// </summary>
@@ -54,7 +70,7 @@ internal sealed class FullReconcileRequest
     /// <returns>The claimed request.</returns>
     public FullReconcileRequest WithReasons(IEnumerable<FullReconcileRequestReason> reasons)
     {
-        return new FullReconcileRequest(Id, reasons, _completion);
+        return new FullReconcileRequest(Id, reasons, Confirmation, _completion);
     }
 
     /// <summary>

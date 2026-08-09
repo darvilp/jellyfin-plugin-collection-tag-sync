@@ -25,6 +25,39 @@ public sealed class PluginConfiguration : BasePluginConfiguration
     public int StartupReconcileDelayMinutes { get; set; } = StartupReconcileOptions.DefaultDelayMinutes;
 
     /// <summary>
+    /// Gets or sets a value indicating whether destructive bulk-plan circuit breaking is enabled.
+    /// </summary>
+    public bool DestructiveCircuitBreakerEnabled { get; set; } = true;
+
+    /// <summary>
+    /// Gets or sets the inclusive maximum number of unique items affected by Authoritative removals.
+    /// </summary>
+    public int DestructiveMaximumAffectedItems { get; set; } =
+        Domain.DestructiveCircuitBreakerOptions.DefaultMaximumAffectedItems;
+
+    /// <summary>
+    /// Gets or sets the inclusive maximum per-group removal percentage.
+    /// </summary>
+    public int DestructiveMaximumRemovalPercentage { get; set; } =
+        Domain.DestructiveCircuitBreakerOptions.DefaultMaximumRemovalPercentage;
+
+    /// <summary>
+    /// Gets or sets the current-assignment population floor for percentage evaluation.
+    /// </summary>
+    public int DestructiveMinimumAssignmentPopulation { get; set; } =
+        Domain.DestructiveCircuitBreakerOptions.DefaultMinimumAssignmentPopulation;
+
+    /// <summary>
+    /// Gets or sets a value indicating whether disabling the circuit breaker was explicitly acknowledged.
+    /// </summary>
+    public bool DestructiveCircuitBreakerDisableAcknowledged { get; set; }
+
+    /// <summary>
+    /// Gets or sets the latest persisted paused Full Reconcile preview diagnostics.
+    /// </summary>
+    public PausedFullReconcileConfiguration? PausedFullReconcile { get; set; }
+
+    /// <summary>
     /// Gets or sets the persisted continuous mapping groups.
     /// </summary>
     [SuppressMessage(
