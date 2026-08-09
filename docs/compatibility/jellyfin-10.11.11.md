@@ -2,7 +2,7 @@
 
 **Validated:** 2026-08-09
 
-**Scope:** Phase 1 integration spike through Phase 4A continuous adapters
+**Scope:** Phase 1 integration spike through Phase 4B incremental coordination
 
 ## Pinned compatibility set
 
@@ -68,6 +68,14 @@ not used.
   logged across duplicate and self-events, rehydrated from persisted
   configuration after restart, then cleared when mappings were explicitly
   disabled.
+- Incremental work is serialized through one deduplicating coordinator. Its
+  fine-grained queue accepts at most 1,000 unique pending item identities; the
+  next unique identity activates storm fallback and raises one coalesced Full
+  Reconcile request instead of growing the queue.
+- An item write failure retains earlier successful mutations, stops the item,
+  and quarantines it from later incremental events until Full Reconcile resets
+  recovery state. Privacy-safe status snapshots expose only queued, running,
+  and quarantined counts plus storm state, never item or library identities.
 
 The package verifier confirmed that the ZIP contains exactly the plugin DLL
 and JPRM `meta.json`, with version `0.1.0.0`, the permanent GUID, and target ABI
@@ -93,12 +101,13 @@ bash scripts/test-manifest-install.sh
 Validated results:
 
 - build: zero warnings and zero errors;
-- tests: 53 passed, 0 failed;
+- tests: 56 passed, 0 failed;
 - event observation: all four subscribed event types observed;
 - persistence/API contract: passed across two restarts;
 - walking slice: Movie and Series added once each, then settled at zero delta;
 - continuous adapters: both directions, both policies, Movie/Series scope, and
-  fail-closed missing-collection behavior passed;
+  fail-closed missing-collection behavior passed through the hardened
+  coordinator;
 - manual package install: passed;
 - temporary-manifest catalog install: passed.
 
@@ -107,8 +116,10 @@ Validated results:
 - The Phase 3 walking slice proves that mutations made by the plugin's own
   collection writer emit self-events and settle to a zero-delta second pass.
   Phase 4A extends that proof to direct tag writes, collection removals, and
-  fail-closed missing references. Serialized failure containment, full-library
-  recovery, and configuration activation status remain later phases.
+  fail-closed missing references. Phase 4B contains incremental failures and
+  produces the bounded event-storm request; issue #10 must consume that request
+  through Full Reconcile. Full-library recovery and configuration activation
+  status remain later phases.
 - The create endpoint's independent persistence was proven. Cancellation and
   save-failure behavior around the future application workflow remains an
   application-level test for the run-once/configuration phase.
