@@ -814,6 +814,9 @@ For collections:
   existing matches instead;
 - a successfully created collection remains if the surrounding workflow is
   canceled or its save fails, with no automatic rollback;
+- create explicitly named collections locked so Jellyfin metadata providers do
+  not replace the administrator's requested name; administrators may later
+  unlock them in Jellyfin when provider-managed collection metadata is desired;
 - pre-existing duplicate names appear as separate, disambiguated picker entries;
 - store GUID, not name, after selection.
 

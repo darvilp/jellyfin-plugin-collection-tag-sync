@@ -546,6 +546,8 @@ test('collection creation is a native modal associated with the originating pick
     assert.match(html, /aria-modal="true"/);
     assert.match(html, /aria-describedby="collectionTagSyncCreateCollectionDescription"/);
     assert.match(html, /selected in the picker you opened this from/i);
+    assert.match(html, /starts locked so metadata providers cannot replace its explicit name/i);
+    assert.match(html, /unlock it later in\s+Jellyfin/i);
     assert.match(html, /\.collectionTagSyncDialog::backdrop/);
     assert.doesNotMatch(html, /<section[^>]+id="collectionTagSyncCreateCollection"/);
 });

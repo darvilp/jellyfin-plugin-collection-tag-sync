@@ -30,6 +30,12 @@ api_post_json() {
         "$1"
 }
 
+api_delete() {
+    curl --fail --silent --request DELETE \
+        --header "X-Emby-Token: ${access_token}" \
+        "$1" >/dev/null
+}
+
 request_with_status() {
     local method="$1"
     local url="$2"
@@ -82,6 +88,52 @@ if [[ "${response_code}" != "400" ]] \
         "${response_code}" "${response_body}" >&2
     exit 5
 fi
+
+preservation_collection_id=''
+cleanup_preservation_collection() {
+    if [[ -n "${preservation_collection_id}" ]]; then
+        api_delete "${server_url}/Items/${preservation_collection_id}" || true
+    fi
+}
+trap cleanup_preservation_collection EXIT
+
+existing_cass_ids="$(api_get "${server_url}/Items?IncludeItemTypes=BoxSet&Recursive=true&Fields=Path" \
+    | jq --raw-output '.Items[]
+        | select((.Path // "") | endswith("/Cass [boxset]"))
+        | .Id')"
+if [[ -n "${existing_cass_ids}" ]]; then
+    printf 'A pre-existing Cass collection blocks the disposable name-preservation probe: %s\n' \
+        "${existing_cass_ids//$'\n'/, }" >&2
+    printf 'Remove that test artifact explicitly or reset the isolated Jellyfin environment, then rerun.\n' >&2
+    exit 13
+fi
+
+request_with_status POST "${collections_url}/Create" '{"Name":"Cass"}'
+if [[ "${response_code}" != "201" ]]; then
+    printf 'Name-preservation collection returned HTTP %s: %s\n' \
+        "${response_code}" "${response_body}" >&2
+    exit 14
+fi
+
+preservation_collection_id="$(jq --raw-output \
+    '.SelectedCollection.Id // .selectedCollection.id' <<<"${response_body}")"
+for _ in {1..5}; do
+    preservation_item="$(api_get "${server_url}/Items/${preservation_collection_id}")"
+    if ! jq --exit-status \
+        '.Name == "Cass"
+         and .LockData == true
+         and ((.ProviderIds // {}) | length == 0)' \
+        <<<"${preservation_item}" >/dev/null; then
+        printf 'Plugin-created Cass did not remain locked, provider-free, and administrator-named: %s\n' \
+            "${preservation_item}" >&2
+        exit 15
+    fi
+
+    sleep 1
+done
+
+api_delete "${server_url}/Items/${preservation_collection_id}"
+preservation_collection_id=''
 
 created_name="Waltney Picker $(date -u +'%Y%m%d%H%M%S%N')"
 create_request="$(jq --null-input --arg name "  ${created_name}  " '{Name: $name}')"
@@ -182,4 +234,5 @@ if ! jq --exit-status --arg collection_id "${collection_id}" \
 fi
 
 printf 'Verified elevated GUID picker, trimmed Add New selection, rename-safe identity, and duplicate recovery.\n'
+printf 'Verified plugin-created collection name protection across Jellyfin metadata refresh.\n'
 printf 'Verified empty-name rejection and independent collection persistence after surrounding failure.\n'

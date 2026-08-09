@@ -49,7 +49,7 @@ internal sealed class JellyfinCollectionCatalog : ICollectionCatalog
             .CreateCollectionAsync(new CollectionCreationOptions
             {
                 Name = displayName,
-                IsLocked = false,
+                IsLocked = true,
                 ItemIdList = [],
             })
             .ConfigureAwait(false);
