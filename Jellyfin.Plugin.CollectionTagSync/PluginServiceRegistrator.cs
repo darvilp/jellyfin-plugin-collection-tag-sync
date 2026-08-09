@@ -18,9 +18,13 @@ public sealed class PluginServiceRegistrator : IPluginServiceRegistrator
         serviceCollection.AddSingleton<IItemStateReader, JellyfinItemStateReader>();
         serviceCollection.AddSingleton<IPlanWriter, JellyfinPlanWriter>();
         serviceCollection.AddSingleton<ItemReconciler>();
+        serviceCollection.AddSingleton<IncrementalReconciliationOptions>();
+        serviceCollection.AddSingleton<FullReconcileRequestStore>();
         serviceCollection.AddHostedService<MappingDiagnosticInitializer>();
         serviceCollection.AddSingleton<ReconciliationWorker>();
         serviceCollection.AddSingleton<IDirtyItemSink>(
+            serviceProvider => serviceProvider.GetRequiredService<ReconciliationWorker>());
+        serviceCollection.AddSingleton<IIncrementalReconciliationControl>(
             serviceProvider => serviceProvider.GetRequiredService<ReconciliationWorker>());
         serviceCollection.AddHostedService(
             serviceProvider => serviceProvider.GetRequiredService<ReconciliationWorker>());

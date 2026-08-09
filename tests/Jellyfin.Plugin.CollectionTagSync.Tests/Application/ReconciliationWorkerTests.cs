@@ -45,6 +45,8 @@ public sealed class ReconciliationWorkerTests
             writer);
         worker = new ReconciliationWorker(
             reconciler,
+            new IncrementalReconciliationOptions(),
+            new FullReconcileRequestStore(),
             NullLogger<ReconciliationWorker>.Instance);
 
         worker.MarkDirty(itemId);
