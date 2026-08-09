@@ -229,6 +229,14 @@ Default boundary cases:
 | Safety | Bulk destructive limit pauses the whole plan before writes |
 | Safety | Circuit-breaker defaults and exact boundaries are configurable and tested |
 | Safety | Disabling the circuit breaker requires warning and confirmation |
+| UI | Embedded administrator page and controller resources are discoverable |
+| UI | Duplicate collection names remain distinct GUID-valued picker choices |
+| UI | Validation messages are rendered from server responses, not reimplemented rules |
+| UI | Editing a candidate, operation, or exclusions invalidates its preview action |
+| UI | Background queued, running, completed, failed, and paused states are rendered |
+| UI | Actions use native keyboard-operable controls and status uses live regions |
+| UI | Tag discovery and operational diagnostics require administrator elevation |
+| UI | Manual Full Reconcile is queued through a server-owned background action |
 
 ---
 

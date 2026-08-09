@@ -91,6 +91,7 @@ public sealed class RunOnceService : IDisposable
                     candidatePlan.Plans);
                 var authorization = _authorizationService.Issue(
                     preview,
+                    candidatePlan.ExcludableItemIds,
                     administratorId,
                     RunOnceOperationFingerprint.Create(
                         validation.Operation,
@@ -330,10 +331,13 @@ public sealed class RunOnceService : IDisposable
             }
         }
 
-        var statesById = states.ToDictionary(state => state.ItemId);
+        var selection = RunOnceCandidateSelector.SelectPlanDetails(
+            validation.ActiveOperationalConfiguration,
+            operation,
+            states,
+            validation.ExcludedItemIds);
         var invalidExclusions = validation.ExcludedItemIds
-            .Where(itemId => !statesById.TryGetValue(itemId, out var state)
-                || !HasDirectTargetChange(validation.ActiveOperationalConfiguration, operation, state))
+            .Where(itemId => !selection.DirectTargetChangeItemIds.Contains(itemId))
             .ToArray();
         if (invalidExclusions.Length > 0)
         {
@@ -344,28 +348,11 @@ public sealed class RunOnceService : IDisposable
                     $"Item {itemId:D} is not a current eligible direct run-once target change.")));
         }
 
-        var plans = RunOnceCandidateSelector.SelectPlans(
-            validation.ActiveOperationalConfiguration,
-            operation,
-            states,
-            validation.ExcludedItemIds);
         return CandidatePlan.Valid(
             eligibleItemIds.Length,
-            plans.Select(plan => plan.ItemId),
-            plans);
-    }
-
-    private static bool HasDirectTargetChange(
-        MappingConfiguration activeConfiguration,
-        RunOnceOperation operation,
-        ObservedItemState state)
-    {
-        var plan = RunOncePlanner.Plan(
-            activeConfiguration,
-            operation,
-            state,
-            keepCurrentTargetState: false);
-        return plan.Mutations.Any(mutation => mutation.Target.Equals(operation.Target));
+            selection.Plans.Select(plan => plan.ItemId),
+            selection.Plans,
+            selection.DirectTargetChangeItemIds);
     }
 
     private static ObservedItemState? Combine(
@@ -476,11 +463,13 @@ public sealed class RunOnceService : IDisposable
             int totalItemCount,
             IEnumerable<Guid> itemIds,
             IEnumerable<ReconciliationPlan> plans,
+            IEnumerable<Guid> excludableItemIds,
             IEnumerable<RunOnceValidationError> errors)
         {
             TotalItemCount = totalItemCount;
             ItemIds = [.. itemIds];
             Plans = [.. plans];
+            ExcludableItemIds = [.. excludableItemIds];
             Errors = [.. errors];
         }
 
@@ -490,21 +479,24 @@ public sealed class RunOnceService : IDisposable
 
         public IReadOnlyList<ReconciliationPlan> Plans { get; }
 
+        public IReadOnlyList<Guid> ExcludableItemIds { get; }
+
         public IReadOnlyList<RunOnceValidationError> Errors { get; }
 
         public static CandidatePlan Invalid(
             int totalItemCount,
             IEnumerable<RunOnceValidationError> errors)
         {
-            return new CandidatePlan(totalItemCount, [], [], errors);
+            return new CandidatePlan(totalItemCount, [], [], [], errors);
         }
 
         public static CandidatePlan Valid(
             int totalItemCount,
             IEnumerable<Guid> itemIds,
-            IEnumerable<ReconciliationPlan> plans)
+            IEnumerable<ReconciliationPlan> plans,
+            IEnumerable<Guid> excludableItemIds)
         {
-            return new CandidatePlan(totalItemCount, itemIds, plans, []);
+            return new CandidatePlan(totalItemCount, itemIds, plans, excludableItemIds, []);
         }
     }
 }

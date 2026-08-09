@@ -20,6 +20,7 @@ public sealed class FullReconcileController : ControllerBase
     private readonly FullReconcileStatusStore _statusStore;
     private readonly FullReconcileSafetyService _safetyService;
     private readonly FullReconcileApprovalService _approvalService;
+    private readonly FullReconcileRequestStore _requestStore;
 
     /// <summary>
     /// Initializes a new instance of the <see cref="FullReconcileController"/> class.
@@ -27,14 +28,27 @@ public sealed class FullReconcileController : ControllerBase
     /// <param name="statusStore">The current Full Reconcile status store.</param>
     /// <param name="safetyService">The persisted preview and authorization boundary.</param>
     /// <param name="approvalService">The fresh confirmation execution boundary.</param>
+    /// <param name="requestStore">The coalesced background request boundary.</param>
     public FullReconcileController(
         FullReconcileStatusStore statusStore,
         FullReconcileSafetyService safetyService,
-        FullReconcileApprovalService approvalService)
+        FullReconcileApprovalService approvalService,
+        FullReconcileRequestStore requestStore)
     {
         _statusStore = statusStore;
         _safetyService = safetyService;
         _approvalService = approvalService;
+        _requestStore = requestStore;
+    }
+
+    /// <summary>Queues one manual Full Reconcile for background execution.</summary>
+    /// <returns>The accepted coalesced request status.</returns>
+    [HttpPost("")]
+    [ProducesResponseType<FullReconcileRequestStatus>(StatusCodes.Status202Accepted)]
+    public ActionResult<FullReconcileRequestStatus> QueueManual()
+    {
+        _requestStore.Request(FullReconcileRequestReason.Manual);
+        return Accepted(_requestStore.Status);
     }
 
     /// <summary>

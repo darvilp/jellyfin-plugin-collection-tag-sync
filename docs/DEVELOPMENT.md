@@ -8,7 +8,7 @@ is deliberately separate from any Jellyfin installation running on Windows.
 - WSL 2 with systemd enabled
 - Docker Engine 29 or newer with the Compose plugin
 - .NET SDK 9
-- `curl`, `git`, `jq`, `python3`, and `python3-venv`
+- `curl`, `git`, `jq`, Node.js 18 or newer, `python3`, and `python3-venv`
 
 The repository pins the .NET SDK feature band in `global.json`, all Jellyfin
 NuGet packages in `Directory.Packages.props`, and the test server image in
@@ -42,6 +42,9 @@ bash scripts/dotnet.sh test Jellyfin.Plugin.CollectionTagSync.sln \
   --configuration Release \
   --no-build \
   --no-restore
+node --check --experimental-default-type=module \
+  Jellyfin.Plugin.CollectionTagSync/Configuration/configPage.js
+node --test --experimental-default-type=module tests/ui/configPage.test.js
 ```
 
 ## Isolated Jellyfin server
@@ -95,6 +98,7 @@ bash scripts/test-destructive-circuit-breaker.sh
 bash scripts/test-configuration-preview.sh
 bash scripts/test-run-once.sh
 bash scripts/test-collection-selection.sh
+bash scripts/test-administrator-ui.sh
 bash scripts/test-manifest-install.sh
 ```
 

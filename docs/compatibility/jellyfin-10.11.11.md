@@ -2,7 +2,7 @@
 
 **Validated:** 2026-08-09
 
-**Scope:** Phase 1 integration spike through Phase 6C collection selection and creation
+**Scope:** Phase 1 integration spike through Phase 7 administrator UI
 
 ## Pinned compatibility set
 
@@ -145,6 +145,15 @@ not used.
   rejected before creation. A trimmed case-insensitive duplicate returned HTTP
   409 with the existing picker match and created nothing. The created collection
   remained after a later invalid run-once request and Jellyfin restart.
+- Jellyfin served both embedded administrator resources through its native
+  `ConfigurationPage` route. The page exposed continuous mapping, run-once,
+  Full Reconcile, Add New, preview/confirmation, status, and diagnostics
+  workflows; its controller remained a thin client over the custom APIs.
+- The new direct-tag picker and consolidated privacy-safe operational status
+  endpoints required administrator elevation. The UI-facing manual Full
+  Reconcile action also rejected unauthenticated calls, returned HTTP 202 for an
+  elevated request, and reached a background terminal state through the same
+  serialized worker used by Jellyfin's scheduled task.
 
 The package verifier confirmed that the ZIP contains exactly the plugin DLL
 and JPRM `meta.json`, with version `0.1.0.0`, the permanent GUID, and target ABI
@@ -158,6 +167,9 @@ bash scripts/dotnet.sh build Jellyfin.Plugin.CollectionTagSync.sln \
   --configuration Release --no-restore
 bash scripts/dotnet.sh test Jellyfin.Plugin.CollectionTagSync.sln \
   --configuration Release --no-build --no-restore
+node --check --experimental-default-type=module \
+  Jellyfin.Plugin.CollectionTagSync/Configuration/configPage.js
+node --test --experimental-default-type=module tests/ui/configPage.test.js
 bash scripts/package.sh
 bash scripts/install-local-plugin.sh
 bash scripts/test-event-observation.sh
@@ -170,13 +182,14 @@ bash scripts/test-destructive-circuit-breaker.sh
 bash scripts/test-configuration-preview.sh
 bash scripts/test-run-once.sh
 bash scripts/test-collection-selection.sh
+bash scripts/test-administrator-ui.sh
 bash scripts/test-manifest-install.sh
 ```
 
 Validated results:
 
 - build: zero warnings and zero errors;
-- tests: 166 passed, 0 failed;
+- tests: 176 .NET and 8 administrator UI tests passed, 0 failed;
 - event observation: all four subscribed event types observed;
 - persistence/API contract: passed across two restarts;
 - walking slice: Movie and Series added once each, then settled at zero delta;
@@ -203,6 +216,12 @@ Validated results:
 - collection selection: elevated GUID/name picker, rename-safe identity, trimmed
   Add New selection, empty/duplicate rejection, duplicate recovery choices, and
   independent persistence after surrounding failure/restart passed;
+- administrator UI: embedded page/controller discovery, GUID-valued duplicate
+  picker choices, server-message rendering, stale-preview invalidation,
+  multi-item exclusion retention, server-marked direct-target exclusion choices,
+  item-level paused removals, background-state rendering, native keyboard
+  controls, elevated tag/status support, and background Full Reconcile queueing
+  passed;
 - manual package install: passed;
 - temporary-manifest catalog install: passed.
 
@@ -223,10 +242,16 @@ Validated results:
   mappings, binds exclusions to authorization, and dispatches the recomputed
   exact plan without changing the active revision. Phase 6C exposes the
   GUID-only picker and independent creation boundary used by both configuration
-  and run-once UI workflows.
+  and run-once UI workflows. Phase 7 embeds those workflows in Jellyfin while
+  retaining all graph, policy, threshold, preview, and authorization decisions
+  on the server.
 - The create endpoint's independent persistence, duplicate recovery, and
   cancellation/save-failure behavior are covered at the application boundary.
-  Rendering that workflow remains administration UI work.
+  The administration UI renders the distinct creation action and discloses its
+  independent lifecycle.
+- Automated checks prove resource loading and API behavior, but visual polish
+  and a normal-workflow usability pass remain part of the maintainer's alpha
+  validation rather than a blocker for Phase 7 implementation.
 - This environment proves Jellyfin 10.11.11 on Linux containers in WSL. It does
   not claim native Windows-server or older-Jellyfin compatibility.
 - Upgrade behavior from a prior released plugin version remains a release smoke

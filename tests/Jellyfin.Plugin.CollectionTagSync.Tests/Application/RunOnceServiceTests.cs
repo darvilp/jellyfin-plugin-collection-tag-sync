@@ -76,6 +76,43 @@ public sealed class RunOnceServiceTests
         Assert.Equal(3, queued.PrecomputedPlans[itemId].Mutations.Count);
     }
 
+    [Fact]
+    public async Task PreviewMarksOnlyDirectOperationTargetChangesAsExcludable()
+    {
+        var directTargetChange = new Guid("98a126dd-e82d-4317-b830-7236ad50f57c");
+        var cascadeOnlyChange = new Guid("e303f9e8-9133-4575-b3fd-a4c4de3fc186");
+        var persistence = new RecordingPersistence(new PluginConfiguration
+        {
+            Revision = 5,
+            MappingGroups =
+            [
+                Group(Tag("animated"), [Collection(AnimationId, "Animation")], MappingPolicy.Additive),
+            ],
+        });
+        using var service = CreateService(
+            persistence,
+            new FixedCatalog([directTargetChange, cascadeOnlyChange], [AnimationId]),
+            new MutableStateReader(
+                State(directTargetChange, EligibleItemKind.Movie, ["Waltney"], []),
+                State(cascadeOnlyChange, EligibleItemKind.Series, [], [AnimationId])),
+            new ConfigurationReconciliationDispatcher(new BackgroundReconciliationStatusStore()),
+            new BackgroundReconciliationStatusStore());
+
+        var result = await service
+            .PreviewAsync(
+                Operation(
+                    Collection(AnimationId, "Animation"),
+                    [Tag("Waltney")],
+                    MappingPolicy.Additive),
+                new Guid("584ead5d-52c8-456b-962f-e5a89c2dd7d6"),
+                CancellationToken.None)
+            .ConfigureAwait(true);
+
+        var authorization = Assert.IsType<RunOncePreviewAuthorization>(result.Authorization);
+        Assert.Equal(2, authorization.Preview.Items.Count);
+        Assert.Equal(directTargetChange, Assert.Single(authorization.ExcludableItemIds));
+    }
+
     [Theory]
     [InlineData(true, RunOncePreviewOutcome.Invalid)]
     [InlineData(false, RunOncePreviewOutcome.Ready)]

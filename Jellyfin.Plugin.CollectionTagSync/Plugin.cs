@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using Jellyfin.Plugin.CollectionTagSync.Configuration;
 using MediaBrowser.Common.Configuration;
 using MediaBrowser.Common.Plugins;
@@ -10,7 +11,7 @@ namespace Jellyfin.Plugin.CollectionTagSync;
 /// <summary>
 /// The Collection Tag Sync Jellyfin plugin.
 /// </summary>
-public sealed class Plugin : BasePlugin<PluginConfiguration>
+public sealed class Plugin : BasePlugin<PluginConfiguration>, IHasWebPages
 {
     /// <summary>
     /// Initializes a new instance of the <see cref="Plugin"/> class.
@@ -37,6 +38,22 @@ public sealed class Plugin : BasePlugin<PluginConfiguration>
 
     /// <inheritdoc />
     public override Guid Id => new("04920eee-c499-4b13-890f-7af0175f28f0");
+
+    /// <inheritdoc />
+    public IEnumerable<PluginPageInfo> GetPages()
+    {
+        const string resourcePrefix = "Jellyfin.Plugin.CollectionTagSync.Configuration";
+        yield return new PluginPageInfo
+        {
+            Name = Name,
+            EmbeddedResourcePath = resourcePrefix + ".configPage.html",
+        };
+        yield return new PluginPageInfo
+        {
+            Name = Name + ".js",
+            EmbeddedResourcePath = resourcePrefix + ".configPage.js",
+        };
+    }
 
     /// <inheritdoc />
     public override void UpdateConfiguration(BasePluginConfiguration configuration)

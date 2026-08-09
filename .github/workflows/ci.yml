@@ -30,6 +30,11 @@ jobs:
       - name: Restore
         run: dotnet restore Jellyfin.Plugin.CollectionTagSync.sln
 
+      - name: Test administrator UI
+        run: |
+          node --check --experimental-default-type=module Jellyfin.Plugin.CollectionTagSync/Configuration/configPage.js
+          node --test --experimental-default-type=module tests/ui/configPage.test.js
+
       - name: Build
         run: dotnet build Jellyfin.Plugin.CollectionTagSync.sln --configuration Release --no-restore
 
