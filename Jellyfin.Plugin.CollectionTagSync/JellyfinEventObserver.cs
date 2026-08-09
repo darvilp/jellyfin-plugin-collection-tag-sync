@@ -1,7 +1,11 @@
 using System;
 using System.Threading;
 using System.Threading.Tasks;
+using Jellyfin.Plugin.CollectionTagSync.Application;
 using MediaBrowser.Controller.Collections;
+using MediaBrowser.Controller.Entities;
+using MediaBrowser.Controller.Entities.Movies;
+using MediaBrowser.Controller.Entities.TV;
 using MediaBrowser.Controller.Library;
 using MediaBrowser.Model.Entities;
 using Microsoft.Extensions.Hosting;
@@ -16,6 +20,7 @@ internal sealed partial class JellyfinEventObserver : IHostedService
 {
     private readonly ILibraryManager _libraryManager;
     private readonly ICollectionManager _collectionManager;
+    private readonly IDirtyItemSink _dirtyItemSink;
     private readonly ILogger<JellyfinEventObserver> _logger;
 
     /// <summary>
@@ -23,14 +28,17 @@ internal sealed partial class JellyfinEventObserver : IHostedService
     /// </summary>
     /// <param name="libraryManager">The Jellyfin library manager.</param>
     /// <param name="collectionManager">The Jellyfin collection manager.</param>
+    /// <param name="dirtyItemSink">The dirty-item sink.</param>
     /// <param name="logger">The logger.</param>
     public JellyfinEventObserver(
         ILibraryManager libraryManager,
         ICollectionManager collectionManager,
+        IDirtyItemSink dirtyItemSink,
         ILogger<JellyfinEventObserver> logger)
     {
         _libraryManager = libraryManager;
         _collectionManager = collectionManager;
+        _dirtyItemSink = dirtyItemSink;
         _logger = logger;
     }
 
@@ -56,6 +64,7 @@ internal sealed partial class JellyfinEventObserver : IHostedService
 
     private void OnItemUpdated(object? sender, ItemChangeEventArgs eventArgs)
     {
+        MarkEligibleItemDirty(eventArgs.Item);
         LogItemUpdated(
             _logger,
             eventArgs.Item.Id,
@@ -70,6 +79,11 @@ internal sealed partial class JellyfinEventObserver : IHostedService
 
     private void OnItemsAddedToCollection(object? sender, CollectionModifiedEventArgs eventArgs)
     {
+        foreach (var item in eventArgs.ItemsChanged)
+        {
+            MarkEligibleItemDirty(item);
+        }
+
         LogItemsAddedToCollection(
             _logger,
             eventArgs.Collection.Id,
@@ -78,10 +92,23 @@ internal sealed partial class JellyfinEventObserver : IHostedService
 
     private void OnItemsRemovedFromCollection(object? sender, CollectionModifiedEventArgs eventArgs)
     {
+        foreach (var item in eventArgs.ItemsChanged)
+        {
+            MarkEligibleItemDirty(item);
+        }
+
         LogItemsRemovedFromCollection(
             _logger,
             eventArgs.Collection.Id,
             eventArgs.ItemsChanged.Count);
+    }
+
+    private void MarkEligibleItemDirty(BaseItem item)
+    {
+        if (item is Movie or Series)
+        {
+            _dirtyItemSink.MarkDirty(item.Id);
+        }
     }
 
     [LoggerMessage(
