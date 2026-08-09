@@ -98,11 +98,11 @@ jobs:
         run: |
           notes_file="docs/releases/${RELEASE_TAG}-alpha.md"
           test -f "${notes_file}"
-          rg --fixed-strings '## Compatibility' "${notes_file}"
-          rg --fixed-strings '## Included behavior' "${notes_file}"
-          rg --fixed-strings '## Configuration and upgrade notes' "${notes_file}"
-          rg --fixed-strings '## Known limitations' "${notes_file}"
-          rg --fixed-strings '10.11.11' "${notes_file}"
+          grep --fixed-strings '## Compatibility' "${notes_file}"
+          grep --fixed-strings '## Included behavior' "${notes_file}"
+          grep --fixed-strings '## Configuration and upgrade notes' "${notes_file}"
+          grep --fixed-strings '## Known limitations' "${notes_file}"
+          grep --fixed-strings '10.11.11' "${notes_file}"
           install -m 0644 "${notes_file}" release-bundle/release-notes.md
 
       - name: Install pinned JPRM for manifest generation
@@ -221,11 +221,11 @@ jobs:
 
       - name: Verify release notes contract
         run: |
-          rg --fixed-strings '## Compatibility' release-bundle/release-notes.md
-          rg --fixed-strings '## Included behavior' release-bundle/release-notes.md
-          rg --fixed-strings '## Configuration and upgrade notes' release-bundle/release-notes.md
-          rg --fixed-strings '## Known limitations' release-bundle/release-notes.md
-          rg --fixed-strings '10.11.11' release-bundle/release-notes.md
+          grep --fixed-strings '## Compatibility' release-bundle/release-notes.md
+          grep --fixed-strings '## Included behavior' release-bundle/release-notes.md
+          grep --fixed-strings '## Configuration and upgrade notes' release-bundle/release-notes.md
+          grep --fixed-strings '## Known limitations' release-bundle/release-notes.md
+          grep --fixed-strings '10.11.11' release-bundle/release-notes.md
 
       - name: Create or verify draft prerelease
         id: release
@@ -271,7 +271,7 @@ jobs:
               --repo "${GITHUB_REPOSITORY}" \
               --json assets \
               --jq '.assets[].name' \
-              | rg --fixed-strings --line-regexp "${asset_name}" >/dev/null; then
+              | grep --fixed-strings --line-regexp "${asset_name}" >/dev/null; then
               printf 'Release asset already exists: %s\n' "${asset_name}"
             else
               gh release upload "${RELEASE_TAG}" \

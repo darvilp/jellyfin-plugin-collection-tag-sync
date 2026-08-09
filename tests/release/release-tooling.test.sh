@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# shellcheck disable=SC2016 # GitHub and shell expressions are intentional static workflow assertions.
 
 set -euo pipefail
 
@@ -17,30 +18,35 @@ tag="v${version}"
 target_abi="10.11.11.0"
 asset_name="Jellyfin.Plugin.CollectionTagSync_${version}.zip"
 source_url="https://github.com/darvilp/jellyfin-plugin-collection-tag-sync/releases/download/${tag}/${asset_name}"
+source_ref_literal='ref: ${{ env.SOURCE_REF }}'
+build_output_literal='source-commit: ${{ steps.source.outputs.commit }}'
+publish_ref_literal='ref: ${{ needs.build.outputs.source-commit }}'
+plugin_url_literal='--plugin-url "${ASSET_URL}"'
+manifest_install_literal='scripts/test-manifest-install.sh "${PACKAGE}"'
 
 test -f "${workflow_path}"
-rg --fixed-strings -- '- "v*.*.*.*"' "${workflow_path}" >/dev/null
-rg --fixed-strings 'group: collection-tag-sync-release' "${workflow_path}" >/dev/null
-rg --fixed-strings 'contents: read' "${workflow_path}" >/dev/null
-rg --fixed-strings 'contents: write' "${workflow_path}" >/dev/null
-rg --fixed-strings 'ref: ${{ env.SOURCE_REF }}' "${workflow_path}" >/dev/null
-rg --fixed-strings 'release-bundle/source-commit.txt' "${workflow_path}" >/dev/null
-rg --fixed-strings 'source-commit: ${{ steps.source.outputs.commit }}' "${workflow_path}" >/dev/null
-rg --fixed-strings 'ref: ${{ needs.build.outputs.source-commit }}' "${workflow_path}" >/dev/null
-rg --fixed-strings 'Reject a moved release tag' "${workflow_path}" >/dev/null
-rg --fixed-strings -- '--plugin-url "${ASSET_URL}"' "${workflow_path}" >/dev/null
-rg --fixed-strings 'scripts/test-manifest-install.sh "${PACKAGE}"' "${workflow_path}" >/dev/null
-rg --fixed-strings 'export JFTS_UID JFTS_GID' "${workflow_path}" >/dev/null
-rg --fixed-strings 'gh release create' "${workflow_path}" >/dev/null
-rg --fixed-strings -- '--draft' "${workflow_path}" >/dev/null
-if rg --line-number 'uses: [^ ]+@(main|master|v[0-9]+)' "${workflow_path}"; then
+grep --fixed-strings -- '- "v*.*.*.*"' "${workflow_path}" >/dev/null
+grep --fixed-strings 'group: collection-tag-sync-release' "${workflow_path}" >/dev/null
+grep --fixed-strings 'contents: read' "${workflow_path}" >/dev/null
+grep --fixed-strings 'contents: write' "${workflow_path}" >/dev/null
+grep --fixed-strings "${source_ref_literal}" "${workflow_path}" >/dev/null
+grep --fixed-strings 'release-bundle/source-commit.txt' "${workflow_path}" >/dev/null
+grep --fixed-strings "${build_output_literal}" "${workflow_path}" >/dev/null
+grep --fixed-strings "${publish_ref_literal}" "${workflow_path}" >/dev/null
+grep --fixed-strings 'Reject a moved release tag' "${workflow_path}" >/dev/null
+grep --fixed-strings -- "${plugin_url_literal}" "${workflow_path}" >/dev/null
+grep --fixed-strings "${manifest_install_literal}" "${workflow_path}" >/dev/null
+grep --fixed-strings 'export JFTS_UID JFTS_GID' "${workflow_path}" >/dev/null
+grep --fixed-strings 'gh release create' "${workflow_path}" >/dev/null
+grep --fixed-strings -- '--draft' "${workflow_path}" >/dev/null
+if grep --extended-regexp --line-number 'uses: [^ ]+@(main|master|v[0-9]+)' "${workflow_path}"; then
     printf 'Release workflow actions must be pinned to immutable commit SHAs.\n' >&2
     exit 1
 fi
-publish_checkout_line="$(rg --line-number --fixed-strings \
-    'ref: ${{ needs.build.outputs.source-commit }}' \
+publish_checkout_line="$(grep --line-number --fixed-strings \
+    "${publish_ref_literal}" \
     "${workflow_path}" | cut -d: -f1)"
-bundle_download_line="$(rg --line-number --fixed-strings \
+bundle_download_line="$(grep --line-number --fixed-strings \
     'name: Download validated release bundle' \
     "${workflow_path}" | cut -d: -f1)"
 if ((publish_checkout_line >= bundle_download_line)); then
@@ -48,9 +54,9 @@ if ((publish_checkout_line >= bundle_download_line)); then
     exit 1
 fi
 for heading in '## Compatibility' '## Included behavior' '## Configuration and upgrade notes' '## Known limitations'; do
-    rg --fixed-strings "${heading}" "${release_notes}" >/dev/null
+    grep --fixed-strings "${heading}" "${release_notes}" >/dev/null
 done
-if rg --line-number '0\.1\.0\.0|10\.11\.11\.0' \
+if grep --extended-regexp --line-number '0\.1\.0\.0|10\.11\.11\.0' \
     "${project_root}/scripts/package.sh" \
     "${project_root}/scripts/install-local-plugin.sh" \
     "${project_root}/scripts/test-manifest-install.sh"; then
@@ -91,7 +97,7 @@ expect_failure() {
         exit 1
     fi
 
-    if ! rg --fixed-strings "${expected_message}" <<<"${output}" >/dev/null; then
+    if ! grep --fixed-strings "${expected_message}" <<<"${output}" >/dev/null; then
         printf 'Expected failure containing %q, got:\n%s\n' "${expected_message}" "${output}" >&2
         exit 1
     fi
