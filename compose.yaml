@@ -1,0 +1,31 @@
+name: collection-tag-sync-test
+
+services:
+  jellyfin:
+    image: jellyfin/jellyfin:10.11.11
+    container_name: collection-tag-sync-jellyfin
+    user: "${JFTS_UID:-1000}:${JFTS_GID:-1000}"
+    init: true
+    environment:
+      JELLYFIN_PublishedServerUrl: http://127.0.0.1:18096
+    ports:
+      - "127.0.0.1:18096:8096"
+    volumes:
+      - ./.testenv/jellyfin/config:/config
+      - ./.testenv/jellyfin/cache:/cache
+      - ./.testenv/jellyfin/media:/media:ro
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "--silent", "http://127.0.0.1:8096/health"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+      start_period: 20s
+    stop_grace_period: 30s
+    networks:
+      testnet:
+
+networks:
+  testnet:
+    ipam:
+      config:
+        - subnet: 172.31.252.0/24

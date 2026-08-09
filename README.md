@@ -4,8 +4,9 @@ Collection Tag Sync is a third-party Jellyfin server plugin for explicit,
 policy-driven synchronization between direct Movie and Series tags and
 collection memberships.
 
-> **Project status:** Design phase. The initial architectural decision records
-> are accepted; production implementation has not begun.
+> **Project status:** Phase 1 integration scaffold complete. The accepted
+> design is being decomposed into implementation issues; synchronization
+> behavior has not begun.
 
 ## Planned capabilities
 
@@ -23,15 +24,17 @@ The plugin will not automatically convert every Jellyfin tag into a collection.
 - [Domain glossary](CONTEXT.md)
 - [Design specification](docs/DESIGN.md)
 - [Development plan](docs/PLAN.md)
+- [Local development](docs/DEVELOPMENT.md)
 - [Testing strategy](docs/TESTING.md)
 - [Packaging and release plan](docs/RELEASE.md)
+- [Jellyfin 10.11.11 compatibility](docs/compatibility/jellyfin-10.11.11.md)
 - [Architectural decision records](docs/adr/)
 - [Upstream references](docs/REFERENCES.md)
 
 ## Development
 
-The next gate is the target-ABI integration spike and implementation planning.
-Behavioral work will then follow a test-first workflow and the phased plan in
+The target-ABI integration spike is complete. Behavioral implementation follows
+the ordered GitHub issue backlog, a test-first workflow, and the phased plan in
 [docs/PLAN.md](docs/PLAN.md).
 
 ## License

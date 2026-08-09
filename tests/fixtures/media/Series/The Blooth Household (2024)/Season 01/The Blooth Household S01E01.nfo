@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<episodedetails>
+  <title>The First Mapping</title>
+  <season>1</season>
+  <episode>1</episode>
+  <aired>2024-01-01</aired>
+  <plot>A synthetic episode used only to make the Series fixture scannable.</plot>
+  <uniqueid type="collection-tag-sync" default="true">blooth-household-s01e01</uniqueid>
+</episodedetails>

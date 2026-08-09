@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<tvshow>
+  <title>The Blooth Household</title>
+  <originaltitle>The Blooth Household</originaltitle>
+  <sorttitle>Blooth Household, The</sorttitle>
+  <year>2024</year>
+  <plot>A synthetic series fixture for Collection Tag Sync integration tests.</plot>
+  <uniqueid type="collection-tag-sync" default="true">blooth-household-2024</uniqueid>
+</tvshow>

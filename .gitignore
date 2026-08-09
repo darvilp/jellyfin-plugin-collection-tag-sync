@@ -15,6 +15,7 @@ coverage/
 *.sln.docstates
 
 # Local Jellyfin test state
+.testenv/
 .jellyfin/
 jellyfin-data/
 jellyfin-config/

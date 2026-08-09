@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<movie>
+  <title>Waltney Adventure</title>
+  <originaltitle>Waltney Adventure</originaltitle>
+  <sorttitle>Waltney Adventure</sorttitle>
+  <year>2024</year>
+  <plot>A synthetic movie fixture for Collection Tag Sync integration tests.</plot>
+  <runtime>1</runtime>
+  <uniqueid type="collection-tag-sync" default="true">waltney-adventure-2024</uniqueid>
+</movie>

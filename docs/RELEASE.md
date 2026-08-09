@@ -48,7 +48,9 @@ If later supporting incompatible Jellyfin ABI lines, publish separate compatible
 │   ├── ci.yml
 │   └── release.yml
 ├── Jellyfin.Plugin.CollectionTagSync/
-├── Jellyfin.Plugin.CollectionTagSync.Tests/
+├── tests/
+│   ├── Jellyfin.Plugin.CollectionTagSync.Tests/
+│   └── fixtures/
 ├── docs/
 │   ├── DESIGN.md
 │   ├── PLAN.md
@@ -57,7 +59,7 @@ If later supporting incompatible Jellyfin ABI lines, publish separate compatible
 │   ├── compatibility/
 │   └── adr/
 ├── build.yaml
-├── CollectionTagSync.sln
+├── Jellyfin.Plugin.CollectionTagSync.sln
 ├── LICENSE
 └── README.md
 ```
