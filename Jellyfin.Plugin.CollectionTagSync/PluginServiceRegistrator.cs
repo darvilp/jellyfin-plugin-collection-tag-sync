@@ -13,10 +13,12 @@ public sealed class PluginServiceRegistrator : IPluginServiceRegistrator
     /// <inheritdoc />
     public void RegisterServices(IServiceCollection serviceCollection, IServerApplicationHost applicationHost)
     {
-        serviceCollection.AddSingleton<IActiveMappingProvider, WalkingSliceMappingProvider>();
+        serviceCollection.AddSingleton<MappingDiagnosticStore>();
+        serviceCollection.AddSingleton<IActiveMappingProvider, PluginMappingProvider>();
         serviceCollection.AddSingleton<IItemStateReader, JellyfinItemStateReader>();
         serviceCollection.AddSingleton<IPlanWriter, JellyfinPlanWriter>();
         serviceCollection.AddSingleton<ItemReconciler>();
+        serviceCollection.AddHostedService<MappingDiagnosticInitializer>();
         serviceCollection.AddSingleton<ReconciliationWorker>();
         serviceCollection.AddSingleton<IDirtyItemSink>(
             serviceProvider => serviceProvider.GetRequiredService<ReconciliationWorker>());

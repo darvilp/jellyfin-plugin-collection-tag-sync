@@ -7,6 +7,7 @@
 
   <ItemGroup>
     <PackageReference Include="Jellyfin.Common" />
+    <PackageReference Include="Jellyfin.Controller" />
     <PackageReference Include="Jellyfin.Model" />
     <PackageReference Include="Microsoft.NET.Test.Sdk" />
     <PackageReference Include="Moq" />

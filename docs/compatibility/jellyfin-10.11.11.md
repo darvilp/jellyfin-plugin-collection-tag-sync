@@ -2,7 +2,7 @@
 
 **Validated:** 2026-08-09
 
-**Scope:** Phase 1 integration spike and Phase 3 walking slice
+**Scope:** Phase 1 integration spike through Phase 4A continuous adapters
 
 ## Pinned compatibility set
 
@@ -55,6 +55,19 @@ not used.
   `ICollectionManager`. Duplicate item updates produced exactly one effective
   write per item. Each plugin-generated collection event caused a second pass
   that logged zero mutations.
+- Serializer-friendly mapping DTOs round-tripped through Jellyfin's plugin
+  configuration API and activated GUID-bound collection references without
+  name lookup.
+- Continuous Tag to Collection and Collection to Tag mappings applied Additive
+  additions and Authoritative removals for the synthetic Movie and Series.
+  Direct tag writes used `ILibraryManager.UpdateItemAsync`; direct membership
+  writes used `ICollectionManager` add/remove operations.
+- A missing collection in a mixed-source Authoritative group skipped the whole
+  group without removing its observed tag target. That observed target still
+  supported a valid downstream collection mapping. One persistent warning was
+  logged across duplicate and self-events, rehydrated from persisted
+  configuration after restart, then cleared when mappings were explicitly
+  disabled.
 
 The package verifier confirmed that the ZIP contains exactly the plugin DLL
 and JPRM `meta.json`, with version `0.1.0.0`, the permanent GUID, and target ABI
@@ -73,16 +86,19 @@ bash scripts/install-local-plugin.sh
 bash scripts/test-event-observation.sh
 bash scripts/test-jellyfin-contracts.sh
 bash scripts/test-walking-slice.sh
+bash scripts/test-continuous-adapters.sh
 bash scripts/test-manifest-install.sh
 ```
 
 Validated results:
 
 - build: zero warnings and zero errors;
-- tests: 44 passed, 0 failed;
+- tests: 53 passed, 0 failed;
 - event observation: all four subscribed event types observed;
 - persistence/API contract: passed across two restarts;
 - walking slice: Movie and Series added once each, then settled at zero delta;
+- continuous adapters: both directions, both policies, Movie/Series scope, and
+  fail-closed missing-collection behavior passed;
 - manual package install: passed;
 - temporary-manifest catalog install: passed.
 
@@ -90,8 +106,9 @@ Validated results:
 
 - The Phase 3 walking slice proves that mutations made by the plugin's own
   collection writer emit self-events and settle to a zero-delta second pass.
-  Tag writing, Authoritative removals, multi-hop execution, and recovery remain
-  later implementation phases.
+  Phase 4A extends that proof to direct tag writes, collection removals, and
+  fail-closed missing references. Serialized failure containment, full-library
+  recovery, and configuration activation status remain later phases.
 - The create endpoint's independent persistence was proven. Cancellation and
   save-failure behavior around the future application workflow remains an
   application-level test for the run-once/configuration phase.

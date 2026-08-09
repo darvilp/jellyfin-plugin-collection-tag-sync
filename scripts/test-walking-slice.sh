@@ -37,7 +37,7 @@ restore_test_state() {
     set +e
     api_post_json \
         "${server_url}/Plugins/${plugin_id}/Configuration" \
-        '{"SchemaVersion":1,"WalkingSliceEnabled":false}' >/dev/null
+        '{"SchemaVersion":1,"MappingGroups":[]}' >/dev/null
 
     if [[ -n "${movie_id}" && -n "${movie_original_tags}" ]]; then
         current_movie="$(api_get "${server_url}/Items/${movie_id}")"
@@ -91,10 +91,18 @@ api_post_json \
         --arg collection_name "${collection_name}" \
         '{
             SchemaVersion: 1,
-            WalkingSliceEnabled: true,
-            WalkingSliceSourceTag: $source_tag,
-            WalkingSliceTargetCollectionId: $collection_id,
-            WalkingSliceTargetCollectionName: $collection_name
+            MappingGroups: [
+                {
+                    Target: {
+                        Kind: 1,
+                        CollectionId: $collection_id,
+                        CollectionDisplayName: $collection_name
+                    },
+                    Sources: [{Kind: 0, TagValue: $source_tag}],
+                    Policy: 0,
+                    IsEnabled: true
+                }
+            ]
         }')"
 
 event_start="$(date -u +'%Y-%m-%dT%H:%M:%SZ')"
