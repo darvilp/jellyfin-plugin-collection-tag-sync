@@ -1,0 +1,16 @@
+---
+name: "Collection Tag Sync"
+guid: "04920eee-c499-4b13-890f-7af0175f28f0"
+version: "0.1.0.0"
+targetAbi: "10.11.11.0"
+framework: "net9.0"
+owner: "darvilp"
+overview: "Synchronize Jellyfin tags and collections through explicit administrator-defined mappings."
+description: >
+  Collection Tag Sync keeps direct Movie and Series tags and collection
+  memberships aligned through explicit, safety-conscious mappings.
+category: "General"
+artifacts:
+  - "Jellyfin.Plugin.CollectionTagSync.dll"
+changelog: >
+  Initial development build.
