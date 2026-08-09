@@ -36,7 +36,8 @@ public sealed class RunOnceServiceTests
             new FixedCatalog([itemId], [AnimationId, KidsId]),
             new MutableStateReader(State(itemId, EligibleItemKind.Movie, ["Waltney"], [])),
             dispatcher,
-            statusStore);
+            statusStore,
+            itemTitleProvider: new TestItemTitleProvider((itemId, "Waltney Adventure")));
         var operation = Operation(
             Collection(AnimationId, "Animation"),
             [Tag("Waltney")],
@@ -49,6 +50,7 @@ public sealed class RunOnceServiceTests
         Assert.Equal(RunOncePreviewOutcome.Ready, preview.Outcome);
         var authorization = Assert.IsType<RunOncePreviewAuthorization>(preview.Authorization);
         var item = Assert.Single(authorization.Preview.Items);
+        Assert.Equal("Waltney Adventure", item.ItemTitle);
         Assert.Equal(3, item.Mutations.Count);
         Assert.Contains(item.Mutations, mutation =>
             mutation.Kind == PlannedMutationKind.AddCollectionMembership
@@ -390,12 +392,14 @@ public sealed class RunOnceServiceTests
         IItemStateReader stateReader,
         ConfigurationReconciliationDispatcher dispatcher,
         BackgroundReconciliationStatusStore statusStore,
-        TimeProvider? timeProvider = null)
+        TimeProvider? timeProvider = null,
+        IItemTitleProvider? itemTitleProvider = null)
     {
         return new RunOnceService(
             persistence,
             catalog,
             stateReader,
+            itemTitleProvider ?? new TestItemTitleProvider(),
             dispatcher,
             new ReconciliationExecutionGate(),
             timeProvider ?? TimeProvider.System);

@@ -12,7 +12,7 @@ namespace Jellyfin.Plugin.CollectionTagSync.Application;
 /// <summary>
 /// Reads direct Movie and Series state through Jellyfin services.
 /// </summary>
-internal sealed class JellyfinItemStateReader : IItemStateReader
+internal sealed class JellyfinItemStateReader : IItemStateReader, IItemTitleProvider
 {
     private readonly ILibraryManager _libraryManager;
 
@@ -56,6 +56,12 @@ internal sealed class JellyfinItemStateReader : IItemStateReader
             itemKind.Value,
             item.Tags,
             collectionIds));
+    }
+
+    /// <inheritdoc />
+    public string GetTitle(Guid itemId)
+    {
+        return _libraryManager.GetItemById(itemId)?.Name ?? string.Empty;
     }
 
     private bool IsMember(Guid collectionId, Guid itemId)

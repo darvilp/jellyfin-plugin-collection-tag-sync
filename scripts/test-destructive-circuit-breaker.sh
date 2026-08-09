@@ -24,6 +24,8 @@ source_tag="Waltney-Circuit-Source-$(date -u +'%Y%m%d%H%M%S%N')"
 target_tag="Blooth-Circuit-Target-$(date -u +'%Y%m%d%H%M%S%N')"
 movie_id=''
 series_id=''
+movie_title=''
+series_title=''
 movie_original_tags=''
 series_original_tags=''
 original_configuration=''
@@ -140,6 +142,10 @@ fi
 items="$(api_get "${server_url}/Items?Recursive=true&IncludeItemTypes=Movie,Series&Fields=Tags")"
 movie_id="$(jq --raw-output '.Items[] | select(.Type == "Movie") | .Id' <<<"${items}" | head -n 1)"
 series_id="$(jq --raw-output '.Items[] | select(.Type == "Series") | .Id' <<<"${items}" | head -n 1)"
+movie_title="$(jq --raw-output --arg item_id "${movie_id}" \
+    '.Items[] | select(.Id == $item_id) | .Name' <<<"${items}")"
+series_title="$(jq --raw-output --arg item_id "${series_id}" \
+    '.Items[] | select(.Id == $item_id) | .Name' <<<"${items}")"
 movie_original_tags="$(jq --compact-output --arg item_id "${movie_id}" \
     '.Items[] | select(.Id == $item_id) | (.Tags // [])' <<<"${items}")"
 series_original_tags="$(jq --compact-output --arg item_id "${series_id}" \
@@ -222,13 +228,23 @@ fi
 preview="$(api_post_json "${full_reconcile_url}/${run_id}/Preview" '{}')"
 authorization="$(jq --raw-output '.Authorization // .authorization' <<<"${preview}")"
 if ! jq --exit-status \
+    --arg movie_id "${movie_id}" \
+    --arg movie_title "${movie_title}" \
+    --arg series_id "${series_id}" \
+    --arg series_title "${series_title}" \
     '(.Preview.UniqueAffectedItemCount // .preview.uniqueAffectedItemCount) == 2
      and ((.Preview.Removals // .preview.removals) | length == 2)
      and ((.Preview.Items // .preview.items) | length == 2)
      and ((.Preview.Items // .preview.items)
+          | all(
+              ((.ItemId // .itemId) == $movie_id
+                  and (.ItemTitle // .itemTitle) == $movie_title)
+              or ((.ItemId // .itemId) == $series_id
+                  and (.ItemTitle // .itemTitle) == $series_title)))
+     and ((.Preview.Items // .preview.items)
           | all((.Mutations // .mutations) | length == 1))' \
     <<<"${preview}" >/dev/null; then
-    printf 'Paused preview did not expose the expected item-level diagnostics.\n' >&2
+    printf 'Paused preview did not expose the expected item titles and diagnostics.\n' >&2
     exit 6
 fi
 

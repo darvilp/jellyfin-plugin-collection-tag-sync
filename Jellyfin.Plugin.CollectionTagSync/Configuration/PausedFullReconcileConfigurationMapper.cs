@@ -86,6 +86,7 @@ internal static class PausedFullReconcileConfigurationMapper
                 new PausedFullReconcileItemConfiguration
                 {
                     ItemId = item.ItemId,
+                    ItemTitle = item.ItemTitle,
                     ItemKind = item.ItemKind,
                     Mutations = (item.Mutations ?? []).Select(mutation =>
                         new PausedFullReconcileMutationConfiguration

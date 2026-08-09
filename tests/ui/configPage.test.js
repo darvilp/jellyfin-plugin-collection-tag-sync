@@ -304,6 +304,7 @@ test('run-once preview renders exclusions only for server-marked direct target c
     const items = [
         {
             ItemId: directItemId,
+            ItemTitle: 'Waltney Adventure',
             ItemKind: 'Movie',
             Mutations: [{
                 Kind: 'AddCollectionMembership',
@@ -312,6 +313,7 @@ test('run-once preview renders exclusions only for server-marked direct target c
         },
         {
             ItemId: cascadeItemId,
+            ItemTitle: 'Waltney Adventure',
             ItemKind: 'Series',
             Mutations: [{ Kind: 'AddTag', Target: { Kind: 0, TagValue: 'animated' } }]
         }
@@ -326,6 +328,10 @@ test('run-once preview renders exclusions only for server-marked direct target c
     const rendered = view.querySelector('#collectionTagSyncRunOncePreview').innerHTML;
     assert.match(rendered, new RegExp(`data-run-once-exclusion="${directItemId}"`));
     assert.doesNotMatch(rendered, new RegExp(`data-run-once-exclusion="${cascadeItemId}"`));
+    assert.equal(rendered.match(/Waltney Adventure/g)?.length, 2);
+    assert.ok(rendered.indexOf('Waltney Adventure') < rendered.indexOf(directItemId));
+    assert.match(rendered, new RegExp(directItemId));
+    assert.match(rendered, new RegExp(cascadeItemId));
     assert.match(rendered, /Add Collection/);
     assert.match(rendered, /Add Tag/);
 });
@@ -399,7 +405,11 @@ test('paused Full Reconcile renders every server-provided item removal before co
                             Target: { Kind: 1, CollectionId: cascadeItemId, CollectionDisplayName: 'Animation' }
                         }
                     ],
-                    Groups: []
+                    Groups: [],
+                    Items: [
+                        { ItemId: directItemId, ItemTitle: 'Waltney Adventure' },
+                        { ItemId: cascadeItemId, ItemTitle: 'Blooth Chronicle' }
+                    ]
                 }
             };
         }
@@ -418,6 +428,9 @@ test('paused Full Reconcile renders every server-provided item removal before co
     await view.dispatch('viewshow');
 
     const rendered = view.querySelector('#collectionTagSyncFullReconcilePreview').innerHTML;
+    assert.match(rendered, /Waltney Adventure/);
+    assert.match(rendered, /Blooth Chronicle/);
+    assert.ok(rendered.indexOf('Waltney Adventure') < rendered.indexOf(directItemId));
     assert.match(rendered, new RegExp(directItemId));
     assert.match(rendered, /Remove\s+Tag &quot;Kid-Approved&quot;/);
     assert.match(rendered, new RegExp(cascadeItemId));

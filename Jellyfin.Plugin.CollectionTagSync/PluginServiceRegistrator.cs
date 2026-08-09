@@ -20,7 +20,11 @@ public sealed class PluginServiceRegistrator : IPluginServiceRegistrator
             serviceProvider => serviceProvider.GetRequiredService<PluginMappingProvider>());
         serviceCollection.AddSingleton<IOperationalMappingProvider>(
             serviceProvider => serviceProvider.GetRequiredService<PluginMappingProvider>());
-        serviceCollection.AddSingleton<IItemStateReader, JellyfinItemStateReader>();
+        serviceCollection.AddSingleton<JellyfinItemStateReader>();
+        serviceCollection.AddSingleton<IItemStateReader>(
+            serviceProvider => serviceProvider.GetRequiredService<JellyfinItemStateReader>());
+        serviceCollection.AddSingleton<IItemTitleProvider>(
+            serviceProvider => serviceProvider.GetRequiredService<JellyfinItemStateReader>());
         serviceCollection.AddSingleton<IPlanWriter, JellyfinPlanWriter>();
         serviceCollection.AddSingleton<IPluginConfigurationPersistence, PluginConfigurationPersistence>();
         serviceCollection.AddSingleton<IConfigurationCatalog, JellyfinConfigurationCatalog>();

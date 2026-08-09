@@ -16,6 +16,23 @@ namespace Jellyfin.Plugin.CollectionTagSync.Tests.Application;
 public sealed class JellyfinItemStateReaderTests
 {
     [Fact]
+    public void GetsCurrentItemTitleAndReturnsEmptyForMissingItem()
+    {
+        var itemId = new Guid("ec18b7c5-6fcf-4521-84df-745b619542f1");
+        var missingId = new Guid("ef33c0ea-764f-4ae8-976b-f229243afeb5");
+        var libraryManager = new Mock<ILibraryManager>(MockBehavior.Strict);
+        libraryManager
+            .Setup(manager => manager.GetItemById(itemId))
+            .Returns(new Movie { Id = itemId, Name = "Waltney Adventure" });
+        libraryManager.Setup(manager => manager.GetItemById(missingId)).Returns((BaseItem?)null);
+        var reader = new JellyfinItemStateReader(libraryManager.Object);
+
+        Assert.Equal("Waltney Adventure", reader.GetTitle(itemId));
+        Assert.Equal(string.Empty, reader.GetTitle(missingId));
+        libraryManager.VerifyAll();
+    }
+
+    [Fact]
     public async Task ReadsOnlyDirectMovieAndSeriesTags()
     {
         var movie = new Movie

@@ -22,6 +22,7 @@ remove_tag="Waltney-Preview-Remove-$(date -u +'%Y%m%d%H%M%S%N')"
 source_tag="Blooth-Preview-Source-$(date -u +'%Y%m%d%H%M%S%N')"
 add_tag="Blooth-Preview-Add-$(date -u +'%Y%m%d%H%M%S%N')"
 item_id=''
+item_title=''
 original_tags=''
 original_configuration=''
 response_body=''
@@ -126,6 +127,7 @@ fi
 starting_revision="$(jq --raw-output '.Revision // 0' <<<"${original_configuration}")"
 items="$(api_get "${server_url}/Items?Recursive=true&IncludeItemTypes=Movie,Series&Fields=Tags")"
 item_id="$(jq --raw-output '.Items[0].Id' <<<"${items}")"
+item_title="$(jq --raw-output '.Items[0].Name' <<<"${items}")"
 original_tags="$(jq --compact-output '.Items[0].Tags // []' <<<"${items}")"
 initial_tags="$(jq --arg tag "${remove_tag}" '. + [$tag] | unique' <<<"${original_tags}")"
 set_item_tags "${item_id}" "${initial_tags}"
@@ -165,14 +167,17 @@ fi
 
 if ! jq --exit-status \
     --arg item_id "${item_id}" \
+    --arg item_title "${item_title}" \
     --arg remove_tag "${remove_tag}" \
     '(.Authorization.Preview.Items // .authorization.preview.items)[]
         | select((.ItemId // .itemId) == $item_id)
-        | (.Mutations // .mutations)
-        | any(((.Kind // .kind) == 1 or (.Kind // .kind) == "RemoveTag")
-            and ((.Target.TagValue // .target.tagValue) == $remove_tag))' \
+        | ((.ItemTitle // .itemTitle) == $item_title)
+          and ((.Mutations // .mutations)
+            | any(((.Kind // .kind) == 1 or (.Kind // .kind) == "RemoveTag")
+                and ((.Target.TagValue // .target.tagValue) == $remove_tag)))' \
     <<<"${response_body}" >/dev/null; then
-    printf 'Preview did not expose the expected item-level removal: %s\n' "${response_body}" >&2
+    printf 'Preview did not expose the expected item title and removal: %s\n' \
+        "${response_body}" >&2
     exit 6
 fi
 

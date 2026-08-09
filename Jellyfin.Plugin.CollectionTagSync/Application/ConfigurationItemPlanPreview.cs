@@ -13,16 +13,19 @@ public sealed class ConfigurationItemPlanPreview
     /// Initializes a new instance of the <see cref="ConfigurationItemPlanPreview"/> class.
     /// </summary>
     /// <param name="itemId">The Jellyfin item identifier.</param>
+    /// <param name="itemTitle">The current Jellyfin item title.</param>
     /// <param name="itemKind">The eligible item kind.</param>
     /// <param name="mutations">The direct additions and removals.</param>
     /// <param name="targetEvaluations">The final settled target evaluations.</param>
     internal ConfigurationItemPlanPreview(
         Guid itemId,
+        string itemTitle,
         EligibleItemKind itemKind,
         IEnumerable<ConfigurationMutationPreview> mutations,
         IEnumerable<ConfigurationTargetEvaluationPreview> targetEvaluations)
     {
         ItemId = itemId;
+        ItemTitle = itemTitle;
         ItemKind = itemKind;
         Mutations = [.. mutations];
         TargetEvaluations = [.. targetEvaluations];
@@ -30,6 +33,9 @@ public sealed class ConfigurationItemPlanPreview
 
     /// <summary>Gets the Jellyfin item identifier.</summary>
     public Guid ItemId { get; }
+
+    /// <summary>Gets the current Jellyfin item title.</summary>
+    public string ItemTitle { get; }
 
     /// <summary>Gets the eligible item kind.</summary>
     public EligibleItemKind ItemKind { get; }

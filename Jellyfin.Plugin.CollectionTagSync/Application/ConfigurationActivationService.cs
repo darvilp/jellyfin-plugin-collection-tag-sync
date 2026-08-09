@@ -17,6 +17,7 @@ public sealed class ConfigurationActivationService : IDisposable
     private readonly IPluginConfigurationPersistence _persistence;
     private readonly IConfigurationCatalog _catalog;
     private readonly IItemStateReader _stateReader;
+    private readonly IItemTitleProvider _itemTitleProvider;
     private readonly ConfigurationReconciliationDispatcher _reconciliationDispatcher;
     private readonly BackgroundReconciliationStatusStore _statusStore;
     private readonly ReconciliationExecutionGate _executionGate;
@@ -28,6 +29,7 @@ public sealed class ConfigurationActivationService : IDisposable
     /// <param name="persistence">The Jellyfin plugin configuration persistence boundary.</param>
     /// <param name="catalog">The eligible item and collection catalog.</param>
     /// <param name="stateReader">The direct item-state reader.</param>
+    /// <param name="itemTitleProvider">The current Jellyfin item-title boundary.</param>
     /// <param name="reconciliationDispatcher">The background reconciliation dispatcher.</param>
     /// <param name="statusStore">The background status store.</param>
     /// <param name="executionGate">The shared mutation serialization boundary.</param>
@@ -36,6 +38,7 @@ public sealed class ConfigurationActivationService : IDisposable
         IPluginConfigurationPersistence persistence,
         IConfigurationCatalog catalog,
         IItemStateReader stateReader,
+        IItemTitleProvider itemTitleProvider,
         ConfigurationReconciliationDispatcher reconciliationDispatcher,
         BackgroundReconciliationStatusStore statusStore,
         ReconciliationExecutionGate executionGate,
@@ -44,6 +47,7 @@ public sealed class ConfigurationActivationService : IDisposable
         _persistence = persistence;
         _catalog = catalog;
         _stateReader = stateReader;
+        _itemTitleProvider = itemTitleProvider;
         _reconciliationDispatcher = reconciliationDispatcher;
         _statusStore = statusStore;
         _executionGate = executionGate;
@@ -149,7 +153,8 @@ public sealed class ConfigurationActivationService : IDisposable
                 var preview = ConfigurationPlanPreviewMapper.Create(
                     current.Revision,
                     plan.ItemIds.Count,
-                    plan.Plans);
+                    plan.Plans,
+                    _itemTitleProvider);
                 var authorization = _authorizationService.Issue(
                     preview,
                     administratorId,
