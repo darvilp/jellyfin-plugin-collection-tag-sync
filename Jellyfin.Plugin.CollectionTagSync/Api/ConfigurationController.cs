@@ -1,5 +1,4 @@
 using System;
-using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Jellyfin.Plugin.CollectionTagSync.Application;
@@ -19,7 +18,6 @@ namespace Jellyfin.Plugin.CollectionTagSync.Api;
 [Route("CollectionTagSync/Configuration")]
 public sealed class ConfigurationController : ControllerBase
 {
-    private const string JellyfinUserIdClaim = "Jellyfin-UserId";
     private readonly ConfigurationActivationService _activationService;
     private readonly BackgroundReconciliationStatusStore _statusStore;
 
@@ -74,7 +72,7 @@ public sealed class ConfigurationController : ControllerBase
         [FromBody] PluginConfiguration candidate,
         CancellationToken cancellationToken)
     {
-        var administratorId = GetAdministratorId();
+        var administratorId = AdministratorIdentity.Get(User);
         if (administratorId == Guid.Empty)
         {
             return Unauthorized();
@@ -104,7 +102,7 @@ public sealed class ConfigurationController : ControllerBase
         CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(request);
-        var administratorId = GetAdministratorId();
+        var administratorId = AdministratorIdentity.Get(User);
         if (administratorId == Guid.Empty)
         {
             return Unauthorized();
@@ -139,14 +137,5 @@ public sealed class ConfigurationController : ControllerBase
     {
         var status = _statusStore.Get(id);
         return status is null ? NotFound() : Ok(status);
-    }
-
-    private Guid GetAdministratorId()
-    {
-        var value = User.Claims.FirstOrDefault(claim => string.Equals(
-            claim.Type,
-            JellyfinUserIdClaim,
-            StringComparison.OrdinalIgnoreCase))?.Value;
-        return Guid.TryParse(value, out var administratorId) ? administratorId : Guid.Empty;
     }
 }

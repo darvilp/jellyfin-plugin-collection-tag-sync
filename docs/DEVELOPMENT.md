@@ -93,6 +93,7 @@ bash scripts/test-configuration-activation.sh
 bash scripts/test-full-reconcile.sh
 bash scripts/test-destructive-circuit-breaker.sh
 bash scripts/test-configuration-preview.sh
+bash scripts/test-run-once.sh
 bash scripts/test-manifest-install.sh
 ```
 

@@ -8,6 +8,22 @@ namespace Jellyfin.Plugin.CollectionTagSync.Configuration;
 /// </summary>
 internal static class MappingNodeConfigurationMapper
 {
+    /// <summary>Maps one serializer-friendly node to an unvalidated domain definition.</summary>
+    /// <param name="node">The serializer-friendly node.</param>
+    /// <returns>The unvalidated domain definition.</returns>
+    public static NodeDefinition ToDefinition(MappingNodeConfiguration? node)
+    {
+        node ??= new MappingNodeConfiguration();
+        return node.Kind switch
+        {
+            MappingNodeKind.Tag => new TagNodeDefinition(node.TagValue),
+            MappingNodeKind.Collection => new CollectionNodeDefinition(
+                node.CollectionId,
+                node.CollectionDisplayName),
+            _ => new TagNodeDefinition(null),
+        };
+    }
+
     /// <summary>Maps one validated immutable node to a serializer-friendly DTO.</summary>
     /// <param name="node">The validated node.</param>
     /// <returns>The serializer-friendly node.</returns>

@@ -42,10 +42,10 @@ public static class ReconciliationPlanner
                 .Where(source => effectiveStates[source])
                 .OrderBy(source => source, NodeComparer.Instance)
                 .ToArray();
-            var supported = supportingSources.Length > 0;
-            var effective = group.Policy == MappingPolicy.Additive
-                ? observed || supported
-                : supported;
+            var effective = ReconciliationPlanningSemantics.GetEffectiveState(
+                group.Policy,
+                observed,
+                supportingSources);
             effectiveStates[node] = effective;
             evaluations.Add(new TargetEvaluation(
                 node,
@@ -59,12 +59,12 @@ public static class ReconciliationPlanner
                 continue;
             }
 
-            mutations.Add(new PlannedMutation(
-                GetMutationKind(node, effective),
+            mutations.Add(ReconciliationPlanningSemantics.CreateMutation(
                 node,
                 group.Policy,
+                effective,
                 supportingSources,
-                GetTagValues(node, effective, observedState)));
+                observedState));
         }
 
         return new ReconciliationPlan(
@@ -72,32 +72,5 @@ public static class ReconciliationPlanner
             observedState.ItemKind,
             evaluations,
             mutations);
-    }
-
-    private static PlannedMutationKind GetMutationKind(Node node, bool effectiveState)
-    {
-        return (node, effectiveState) switch
-        {
-            (TagNode, true) => PlannedMutationKind.AddTag,
-            (TagNode, false) => PlannedMutationKind.RemoveTag,
-            (CollectionNode, true) => PlannedMutationKind.AddCollectionMembership,
-            (CollectionNode, false) => PlannedMutationKind.RemoveCollectionMembership,
-            _ => throw new InvalidOperationException("Unknown node type."),
-        };
-    }
-
-    private static IEnumerable<string> GetTagValues(
-        Node node,
-        bool effectiveState,
-        ObservedItemState observedState)
-    {
-        if (node is not TagNode tag)
-        {
-            return [];
-        }
-
-        return effectiveState
-            ? [tag.Value]
-            : observedState.GetMatchingTagValues(tag);
     }
 }
