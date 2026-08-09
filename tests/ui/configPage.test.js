@@ -6,6 +6,7 @@ import createPageController from '../../Jellyfin.Plugin.CollectionTagSync/Config
 
 const directItemId = '11111111-1111-1111-1111-111111111111';
 const cascadeItemId = '22222222-2222-2222-2222-222222222222';
+const emptyGuid = '00000000-0000-0000-0000-000000000000';
 
 class FakeClassList {
     values = new Set();
@@ -233,6 +234,16 @@ test('rendered collection picker keeps duplicate names as distinct GUID choices'
     assert.match(rendered, new RegExp(`value="${cascadeItemId}"`));
     assert.match(rendered, new RegExp(`Animation — ${directItemId}`));
     assert.match(rendered, new RegExp(`Animation — ${cascadeItemId}`));
+});
+
+test('fresh collection nodes render the empty picker prompt instead of an unresolved zero GUID', async () => {
+    const { view } = createHarness();
+
+    await view.dispatch('click', button('add-mapping'));
+
+    const rendered = view.querySelector('#collectionTagSyncMappingGroups').innerHTML;
+    assert.match(rendered, /<option value="">Select a collection…<\/option>/);
+    assert.doesNotMatch(rendered, new RegExp(`Missing collection.*${emptyGuid}`));
 });
 
 test('rendered validation shows the server message without client-side rule substitution', async () => {

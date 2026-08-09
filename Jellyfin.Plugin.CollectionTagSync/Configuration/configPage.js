@@ -31,7 +31,8 @@ function escapeHtml(value) {
  * @returns {Array<{value: string, label: string}>} picker choices
  */
 export function buildCollectionOptions(entries, selectedNode = null) {
-    const selectedId = String(property(selectedNode, 'CollectionId', '') || '');
+    const configuredId = String(property(selectedNode, 'CollectionId', '') || '');
+    const selectedId = configuredId.toLowerCase() === emptyGuid ? '' : configuredId;
     const selectedName = String(property(selectedNode, 'CollectionDisplayName', '') || '');
     const choices = [{ value: '', label: 'Select a collection…' }];
     const known = new Set();
