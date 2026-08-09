@@ -2,7 +2,7 @@
 
 **Validated:** 2026-08-09
 
-**Scope:** Phase 1 integration spike through Phase 6B run-once execution
+**Scope:** Phase 1 integration spike through Phase 6C collection selection and creation
 
 ## Pinned compatibility set
 
@@ -136,6 +136,15 @@ not used.
   write. A fresh preview with `Keep current target state` retained the observed
   collection membership, executed through the shared background worker, and
   remained an ephemeral authorization-bound exclusion.
+- The elevated collection picker returned each current collection as a distinct
+  GUID plus current display name. After a live rename, the same GUID appeared
+  with the new name, confirming that names remain display data rather than
+  binding identities.
+- The distinct Add New endpoint trimmed a proposed name, immediately created
+  the collection, and returned its GUID as the selected value. Empty names were
+  rejected before creation. A trimmed case-insensitive duplicate returned HTTP
+  409 with the existing picker match and created nothing. The created collection
+  remained after a later invalid run-once request and Jellyfin restart.
 
 The package verifier confirmed that the ZIP contains exactly the plugin DLL
 and JPRM `meta.json`, with version `0.1.0.0`, the permanent GUID, and target ABI
@@ -160,13 +169,14 @@ bash scripts/test-full-reconcile.sh
 bash scripts/test-destructive-circuit-breaker.sh
 bash scripts/test-configuration-preview.sh
 bash scripts/test-run-once.sh
+bash scripts/test-collection-selection.sh
 bash scripts/test-manifest-install.sh
 ```
 
 Validated results:
 
 - build: zero warnings and zero errors;
-- tests: 153 passed, 0 failed;
+- tests: 166 passed, 0 failed;
 - event observation: all four subscribed event types observed;
 - persistence/API contract: passed across two restarts;
 - walking slice: Movie and Series added once each, then settled at zero delta;
@@ -190,6 +200,9 @@ Validated results:
 - run-once: Additive tag-to-collection bootstrap, two-hop continuous cascade,
   exact background execution, unchanged persisted graph/revision,
   changed-removal rejection, and ephemeral direct-target exclusion passed;
+- collection selection: elevated GUID/name picker, rename-safe identity, trimmed
+  Add New selection, empty/duplicate rejection, duplicate recovery choices, and
+  independent persistence after surrounding failure/restart passed;
 - manual package install: passed;
 - temporary-manifest catalog install: passed.
 
@@ -208,10 +221,12 @@ Validated results:
   configuration candidate can become active. Phase 6B stages run-once planning
   outside the persisted graph, settles only affected downstream continuous
   mappings, binds exclusions to authorization, and dispatches the recomputed
-  exact plan without changing the active revision.
-- The create endpoint's independent persistence was proven. Picker-only
-  selection, duplicate-name recovery, and cancellation/save-failure behavior
-  around the administration workflow remain later UI/application work.
+  exact plan without changing the active revision. Phase 6C exposes the
+  GUID-only picker and independent creation boundary used by both configuration
+  and run-once UI workflows.
+- The create endpoint's independent persistence, duplicate recovery, and
+  cancellation/save-failure behavior are covered at the application boundary.
+  Rendering that workflow remains administration UI work.
 - This environment proves Jellyfin 10.11.11 on Linux containers in WSL. It does
   not claim native Windows-server or older-Jellyfin compatibility.
 - Upgrade behavior from a prior released plugin version remains a release smoke
