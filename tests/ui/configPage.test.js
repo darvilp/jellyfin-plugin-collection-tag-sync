@@ -115,6 +115,7 @@ class FakeView {
     constructor() {
         this.listeners = new Map();
         this.elements = new Map();
+        this.mappingGroups = [];
         this.targetEditor = new FakeNodeEditor('Kid-Approved');
         this.sourceEditor = new FakeNodeEditor('Waltney');
         this.elements.set('#collectionTagSyncRunOncePolicy', new FakeElement({ value: '0' }));
@@ -148,6 +149,10 @@ class FakeView {
     }
 
     querySelectorAll(selector) {
+        if (selector === '[data-mapping-group]') {
+            return this.mappingGroups;
+        }
+
         if (selector === '#collectionTagSyncRunOnceSources [data-node-editor]') {
             return [this.sourceEditor];
         }
@@ -183,6 +188,56 @@ function collectionPicker(value = directItemId) {
         selectors: ['[data-field="collection-id"]'],
         closest: { '[data-node-editor]': editor }
     });
+}
+
+function editableMappingGroup({ collectionTarget = false } = {}) {
+    const group = new FakeElement();
+    const target = new FakeNodeEditor('Kid-Approved');
+    const source = new FakeNodeEditor('Waltney');
+    const sources = [source];
+    const sourcesContainer = new FakeElement();
+    sourcesContainer.querySelectorAll = selector => selector === '[data-node-editor]' ? sources : [];
+    sourcesContainer.insertAdjacentHTML = () => {
+        sources.push(new FakeNodeEditor(''));
+    };
+    const policy = new FakeElement({ value: '0' });
+    const enabled = new FakeElement({ checked: true });
+    const flow = new FakeElement();
+    const policySummary = new FakeElement();
+    const stateSummary = new FakeElement();
+    const mappingClosest = {
+        '[data-mapping-group]': group,
+        '#collectionTagSyncMappings': {}
+    };
+    source.tag.closestValues = mappingClosest;
+    source.remove = () => sources.splice(sources.indexOf(source), 1);
+    policy.closestValues = mappingClosest;
+    enabled.closestValues = mappingClosest;
+    group.closestValues['[data-mapping-group]'] = group;
+    if (collectionTarget) {
+        target.kind.value = '1';
+        target.dataset.collectionDisplayName = 'Animation';
+        target.collection.value = directItemId;
+        target.collection.dataset.previousValue = directItemId;
+        target.collection.closestValues = {
+            '[data-node-editor]': target,
+            ...mappingClosest
+        };
+    }
+
+    group.querySelector = selector => ({
+        '[data-role="target"] [data-node-editor]': target,
+        '[data-role="sources"]': sourcesContainer,
+        '[data-field="policy"]': policy,
+        '[data-field="enabled"]': enabled,
+        '[data-role="mapping-summary-flow"]': flow,
+        '[data-role="mapping-summary-policy"]': policySummary,
+        '[data-role="mapping-summary-state"]': stateSummary
+    })[selector] ?? new FakeElement();
+    group.querySelectorAll = selector => selector === '[data-role="sources"] [data-node-editor]'
+        ? sources
+        : [];
+    return { enabled, flow, group, policy, policySummary, source, sources, stateSummary, target };
 }
 
 function runOncePreview({
@@ -304,6 +359,182 @@ test('fresh collection nodes render the empty picker prompt instead of an unreso
     const rendered = view.querySelector('#collectionTagSyncMappingGroups').innerHTML;
     assert.match(rendered, /<option value="">Select a collection…<\/option>/);
     assert.doesNotMatch(rendered, new RegExp(`Missing collection.*${emptyGuid}`));
+});
+
+test('configured mappings render as collapsed source-to-target summaries with one Edit disclosure group', async () => {
+    const configuration = {
+        SchemaVersion: 1,
+        MappingGroups: [{
+            Target: { Kind: 1, CollectionId: directItemId, CollectionDisplayName: 'Waltney Picks' },
+            Sources: [
+                { Kind: 0, TagValue: 'Waltney' },
+                { Kind: 1, CollectionId: cascadeItemId, CollectionDisplayName: 'Blooth Archive' }
+            ],
+            Policy: 1,
+            IsEnabled: true
+        }, {
+            Target: { Kind: 0, TagValue: 'Kid-Approved' },
+            Sources: [{ Kind: 0, TagValue: 'Family Night' }],
+            Policy: 0,
+            IsEnabled: false
+        }]
+    };
+    const { view } = createHarness(async path => {
+        if (path === 'CollectionTagSync/Collections/Picker') {
+            return [
+                { Id: directItemId, DisplayName: 'Waltney Picks' },
+                { Id: cascadeItemId, DisplayName: 'Blooth Archive' }
+            ];
+        }
+
+        if (path === 'CollectionTagSync/Tags/Picker') {
+            return ['Waltney', 'Family Night', 'Kid-Approved'];
+        }
+
+        return {};
+    }, configuration);
+
+    await view.dispatch('viewshow');
+
+    const rendered = view.querySelector('#collectionTagSyncMappingGroups').innerHTML;
+    assert.equal([...rendered.matchAll(/data-mapping-group/g)].length, 2);
+    assert.equal([...rendered.matchAll(/name="collectionTagSyncMappingEditors"/g)].length, 2);
+    assert.doesNotMatch(rendered, /<details[^>]*\sopen(?:\s|>)/);
+    assert.match(
+        rendered,
+        /Tag “Waltney” OR Collection “Blooth Archive” → Collection “Waltney Picks”/);
+    assert.match(rendered, /Authoritative/);
+    assert.match(rendered, /Enabled/);
+    assert.match(rendered, /<summary[^>]*>[\s\S]*Edit[\s\S]*<\/summary>/);
+    assert.match(rendered, /data-role="mapping-editor"/);
+});
+
+test('collapsed summaries identify unresolved source and target collection GUIDs', async () => {
+    const configuration = {
+        SchemaVersion: 1,
+        MappingGroups: [{
+            Target: { Kind: 1, CollectionId: directItemId, CollectionDisplayName: 'Former target' },
+            Sources: [{ Kind: 1, CollectionId: cascadeItemId, CollectionDisplayName: 'Former source' }],
+            Policy: 1,
+            IsEnabled: true
+        }]
+    };
+    const { view } = createHarness(async path =>
+        path.endsWith('/Picker') ? [] : {}, configuration);
+
+    await view.dispatch('viewshow');
+
+    const rendered = view.querySelector('#collectionTagSyncMappingGroups').innerHTML;
+    assert.match(rendered, new RegExp(`Missing collection “Former source” — ${cascadeItemId}`));
+    assert.match(rendered, new RegExp(`→ Missing collection “Former target” — ${directItemId}`));
+    assert.doesNotMatch(rendered, /Collection “Former (?:source|target)”/);
+});
+
+test('a newly added mapping is the only expanded continuous editor', async () => {
+    const { view } = createHarness();
+
+    await view.dispatch('click', button('add-mapping'));
+
+    const rendered = view.querySelector('#collectionTagSyncMappingGroups').innerHTML;
+    assert.equal([...rendered.matchAll(/<details[^>]*\sopen(?:\s|>)/g)].length, 1);
+    assert.match(rendered, /<summary[^>]*>[\s\S]*Edit[\s\S]*<\/summary>/);
+    assert.match(rendered, /Edit mapping group 1/);
+});
+
+test('adding a mapping preserves unsaved existing editors and opens only the new group', async () => {
+    const { view } = createHarness();
+    const existing = editableMappingGroup();
+    existing.source.tag.value = 'Unsaved Waltney';
+    existing.policy.value = '1';
+    existing.enabled.checked = false;
+    view.mappingGroups = [existing.group];
+
+    await view.dispatch('click', button('add-mapping'));
+
+    const rendered = view.querySelector('#collectionTagSyncMappingGroups').innerHTML;
+    assert.equal([...rendered.matchAll(/data-mapping-group/g)].length, 2);
+    assert.equal([...rendered.matchAll(/<details[^>]*\sopen(?:\s|>)/g)].length, 1);
+    assert.match(rendered, /Tag “Unsaved Waltney” → Tag “Kid-Approved”/);
+    assert.match(rendered, /Authoritative/);
+    assert.match(rendered, /Disabled/);
+    assert.match(rendered, /Edit mapping group 2/);
+});
+
+test('Edit disclosures close the prior mapping and toggle the selected editor', async () => {
+    const { view } = createHarness();
+    const first = new FakeElement();
+    first.open = true;
+    const second = new FakeElement();
+    const summary = new FakeElement();
+    summary.closestValues['summary[data-action="edit-mapping"]'] = summary;
+    summary.closestValues['[data-mapping-group]'] = second;
+    view.mappingGroups = [first, second];
+
+    await view.dispatch('click', summary);
+    assert.equal(first.open, false);
+    assert.equal(second.open, true);
+
+    await view.dispatch('click', summary);
+    assert.equal(second.open, false);
+});
+
+test('editing a mapping refreshes its compact flow, policy, and enabled summary', async () => {
+    const { view } = createHarness();
+    const mapping = editableMappingGroup();
+    mapping.source.tag.value = 'Blooth';
+
+    await view.dispatch('input', mapping.source.tag);
+    assert.equal(mapping.flow.textContent, 'Tag “Blooth” → Tag “Kid-Approved”');
+
+    mapping.policy.value = '1';
+    await view.dispatch('change', mapping.policy);
+    assert.equal(mapping.policySummary.textContent, 'Authoritative');
+
+    mapping.enabled.checked = false;
+    await view.dispatch('change', mapping.enabled);
+    assert.equal(mapping.stateSummary.textContent, 'Disabled');
+});
+
+test('adding and removing sources refreshes the compact OR summary', async () => {
+    const { view } = createHarness();
+    const mapping = editableMappingGroup();
+    view.mappingGroups = [mapping.group];
+    const addButton = button('add-mapping-source');
+    addButton.closestValues['[data-mapping-group]'] = mapping.group;
+
+    await view.dispatch('click', addButton);
+    assert.equal(
+        mapping.flow.textContent,
+        'Tag “Waltney” OR Tag (not selected) → Tag “Kid-Approved”');
+
+    const removeButton = button('remove-node');
+    removeButton.closestValues['[data-mapping-group]'] = mapping.group;
+    removeButton.closestValues['[data-node-editor]'] = mapping.source;
+    await view.dispatch('click', removeButton);
+    assert.equal(mapping.flow.textContent, 'Tag (not selected) → Tag “Kid-Approved”');
+});
+
+test('collection creation refreshes a compact target summary with the returned display name', async () => {
+    const mapping = editableMappingGroup({ collectionTarget: true });
+    const { view } = createHarness(async path => {
+        if (path === 'CollectionTagSync/Collections/Create') {
+            return {
+                Outcome: 'Created',
+                SelectedCollection: { Id: cascadeItemId, DisplayName: 'Waltney Picks' }
+            };
+        }
+
+        return {};
+    });
+    view.mappingGroups = [mapping.group];
+    mapping.target.collection.value = '__add_new_collection__';
+
+    await view.dispatch('change', mapping.target.collection);
+    view.querySelector('#collectionTagSyncNewCollectionName').value = 'Waltney Picks';
+    await view.dispatch('click', button('create-collection'));
+
+    assert.equal(mapping.target.collection.value, cascadeItemId);
+    assert.equal(mapping.flow.textContent, 'Tag “Waltney” → Collection “Waltney Picks”');
 });
 
 test('collection creation is a native modal associated with the originating picker', async () => {
