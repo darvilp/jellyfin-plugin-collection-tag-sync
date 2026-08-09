@@ -20,13 +20,17 @@ public sealed class ConfigurationControllerContractTests
     }
 
     [Fact]
-    public void ActivationAndStatusActionsHaveExplicitRoutes()
+    public void ActivationPreviewConfirmationAndStatusActionsHaveExplicitRoutes()
     {
         var methods = typeof(ConfigurationController).GetMethods(BindingFlags.Instance | BindingFlags.Public);
         var activate = Assert.Single(methods, method => method.Name == "ActivateAsync");
+        var preview = Assert.Single(methods, method => method.Name == "PreviewAsync");
+        var confirm = Assert.Single(methods, method => method.Name == "ConfirmAsync");
         var status = Assert.Single(methods, method => method.Name == "GetReconciliationStatus");
 
         Assert.NotNull(activate.GetCustomAttribute<HttpPostAttribute>());
+        Assert.Equal("Preview", preview.GetCustomAttribute<HttpPostAttribute>()?.Template);
+        Assert.Equal("Confirm", confirm.GetCustomAttribute<HttpPostAttribute>()?.Template);
         Assert.NotNull(status.GetCustomAttribute<HttpGetAttribute>());
     }
 }

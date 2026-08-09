@@ -71,13 +71,13 @@ internal static class PausedFullReconcileConfigurationMapper
                 new PausedFullReconcileRemovalConfiguration
                 {
                     ItemId = removal.ItemId,
-                    Target = CloneNode(removal.Target),
+                    Target = MappingNodeConfigurationMapper.Clone(removal.Target),
                     Kind = removal.Kind,
                 }).ToArray(),
             Groups = (paused.Groups ?? []).Select(group =>
                 new PausedFullReconcileGroupConfiguration
                 {
-                    Target = CloneNode(group.Target),
+                    Target = MappingNodeConfigurationMapper.Clone(group.Target),
                     CurrentAssignmentCount = group.CurrentAssignmentCount,
                     RemovalCount = group.RemovalCount,
                     ExceedsPercentageLimit = group.ExceedsPercentageLimit,
@@ -91,22 +91,22 @@ internal static class PausedFullReconcileConfigurationMapper
                         new PausedFullReconcileMutationConfiguration
                         {
                             Kind = mutation.Kind,
-                            Target = CloneNode(mutation.Target),
+                            Target = MappingNodeConfigurationMapper.Clone(mutation.Target),
                             Policy = mutation.Policy,
                             SupportingSources = (mutation.SupportingSources ?? [])
-                                .Select(CloneNode)
+                                .Select(MappingNodeConfigurationMapper.Clone)
                                 .ToArray(),
                             TagValues = [.. mutation.TagValues ?? []],
                         }).ToArray(),
                     TargetEvaluations = (item.TargetEvaluations ?? []).Select(evaluation =>
                         new PausedFullReconcileTargetEvaluationConfiguration
                         {
-                            Target = CloneNode(evaluation.Target),
+                            Target = MappingNodeConfigurationMapper.Clone(evaluation.Target),
                             Policy = evaluation.Policy,
                             ObservedState = evaluation.ObservedState,
                             EffectiveState = evaluation.EffectiveState,
                             SupportingSources = (evaluation.SupportingSources ?? [])
-                                .Select(CloneNode)
+                                .Select(MappingNodeConfigurationMapper.Clone)
                                 .ToArray(),
                         }).ToArray(),
                 }).ToArray(),
@@ -128,7 +128,7 @@ internal static class PausedFullReconcileConfigurationMapper
         return new PausedFullReconcileRemovalConfiguration
         {
             ItemId = removal.ItemId,
-            Target = ToConfiguration(removal.Target),
+            Target = MappingNodeConfigurationMapper.FromDomain(removal.Target),
             Kind = removal.Kind,
         };
     }
@@ -137,7 +137,7 @@ internal static class PausedFullReconcileConfigurationMapper
     {
         return new PausedFullReconcileGroupConfiguration
         {
-            Target = ToConfiguration(group.Target),
+            Target = MappingNodeConfigurationMapper.FromDomain(group.Target),
             CurrentAssignmentCount = group.CurrentAssignmentCount,
             RemovalCount = group.RemovalCount,
             ExceedsPercentageLimit = group.ExceedsPercentageLimit,
@@ -154,43 +154,24 @@ internal static class PausedFullReconcileConfigurationMapper
                 new PausedFullReconcileMutationConfiguration
                 {
                     Kind = mutation.Kind,
-                    Target = ToConfiguration(mutation.Target),
+                    Target = MappingNodeConfigurationMapper.FromDomain(mutation.Target),
                     Policy = mutation.Policy,
                     SupportingSources = mutation.SupportingSources
-                        .Select(ToConfiguration)
+                        .Select(MappingNodeConfigurationMapper.FromDomain)
                         .ToArray(),
                     TagValues = [.. mutation.TagValues],
                 }).ToArray(),
             TargetEvaluations = plan.TargetEvaluations.Select(evaluation =>
                 new PausedFullReconcileTargetEvaluationConfiguration
                 {
-                    Target = ToConfiguration(evaluation.Target),
+                    Target = MappingNodeConfigurationMapper.FromDomain(evaluation.Target),
                     Policy = evaluation.Policy,
                     ObservedState = evaluation.ObservedState,
                     EffectiveState = evaluation.EffectiveState,
                     SupportingSources = evaluation.SupportingSources
-                        .Select(ToConfiguration)
+                        .Select(MappingNodeConfigurationMapper.FromDomain)
                         .ToArray(),
                 }).ToArray(),
-        };
-    }
-
-    private static MappingNodeConfiguration ToConfiguration(Node node)
-    {
-        return node switch
-        {
-            TagNode tag => new MappingNodeConfiguration
-            {
-                Kind = MappingNodeKind.Tag,
-                TagValue = tag.Value,
-            },
-            CollectionNode collection => new MappingNodeConfiguration
-            {
-                Kind = MappingNodeKind.Collection,
-                CollectionId = collection.Id,
-                CollectionDisplayName = collection.DisplayName ?? string.Empty,
-            },
-            _ => throw new InvalidOperationException("Unknown node type."),
         };
     }
 
@@ -205,17 +186,5 @@ internal static class PausedFullReconcileConfigurationMapper
             _ => throw new InvalidOperationException("Unknown persisted paused target type."),
         };
         return new DestructiveRemoval(removal.ItemId, target, removal.Kind);
-    }
-
-    private static MappingNodeConfiguration CloneNode(MappingNodeConfiguration? node)
-    {
-        node ??= new MappingNodeConfiguration();
-        return new MappingNodeConfiguration
-        {
-            Kind = node.Kind,
-            TagValue = node.TagValue,
-            CollectionId = node.CollectionId,
-            CollectionDisplayName = node.CollectionDisplayName,
-        };
     }
 }

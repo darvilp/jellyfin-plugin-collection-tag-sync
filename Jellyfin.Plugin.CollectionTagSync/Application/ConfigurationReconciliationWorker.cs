@@ -84,10 +84,23 @@ internal sealed partial class ConfigurationReconciliationWorker : BackgroundServ
                         requestStarted = true;
                     }
 
-                    var configuration = _operationalMappingProvider.Resolve(request.Configuration);
                     try
                     {
-                        await SettleItemAsync(itemId, configuration, stoppingToken).ConfigureAwait(false);
+                        if (request.UsesPrecomputedPlans)
+                        {
+                            if (request.PrecomputedPlans.TryGetValue(itemId, out var precomputedPlan))
+                            {
+                                await _reconciler
+                                    .ApplyAsync(precomputedPlan, stoppingToken)
+                                    .ConfigureAwait(false);
+                            }
+                        }
+                        else
+                        {
+                            var configuration = _operationalMappingProvider.Resolve(request.Configuration);
+                            await SettleItemAsync(itemId, configuration, stoppingToken).ConfigureAwait(false);
+                        }
+
                         _statusStore.RecordSuccess(request.Id);
                     }
                     catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)

@@ -11,13 +11,10 @@ namespace Jellyfin.Plugin.CollectionTagSync.Application;
 /// </summary>
 public sealed class FullReconcileSafetyService
 {
-    private static readonly TimeSpan AuthorizationLifetime = TimeSpan.FromMinutes(10);
     private readonly object _sync = new();
-    private readonly Dictionary<string, AuthorizationEntry> _authorizations =
-        new(StringComparer.Ordinal);
-
     private readonly IPluginConfigurationPersistence _persistence;
     private readonly TimeProvider _timeProvider;
+    private readonly PreviewAuthorizationStore<FullReconcileConfirmation> _authorizationStore;
 
     /// <summary>
     /// Initializes a new instance of the <see cref="FullReconcileSafetyService"/> class.
@@ -30,6 +27,7 @@ public sealed class FullReconcileSafetyService
     {
         _persistence = persistence;
         _timeProvider = timeProvider;
+        _authorizationStore = new PreviewAuthorizationStore<FullReconcileConfirmation>(timeProvider);
     }
 
     /// <summary>
@@ -58,29 +56,17 @@ public sealed class FullReconcileSafetyService
                 return null;
             }
 
-            var now = _timeProvider.GetUtcNow();
-            var staleAuthorizations = _authorizations
-                .Where(pair => pair.Value.ExpiresAtUtc <= now
-                    || (pair.Value.Confirmation.PausedRunId == runId
-                        && pair.Value.AdministratorId == administratorId))
-                .Select(pair => pair.Key)
-                .ToArray();
-            foreach (var staleAuthorization in staleAuthorizations)
-            {
-                _authorizations.Remove(staleAuthorization);
-            }
-
-            var expiresAtUtc = now.Add(AuthorizationLifetime);
-            var authorization = Guid.NewGuid().ToString("N");
-            _authorizations.Add(authorization, new AuthorizationEntry(
+            var grant = _authorizationStore.Issue(
                 administratorId,
-                expiresAtUtc,
                 new FullReconcileConfirmation(
                     runId,
                     paused.ConfigurationRevision,
-                    PausedFullReconcileConfigurationMapper.ToRemovals(paused))));
+                    PausedFullReconcileConfigurationMapper.ToRemovals(paused)));
             var preview = PausedFullReconcileConfigurationMapper.Clone(paused)!;
-            return new FullReconcilePreviewAuthorization(preview, authorization, expiresAtUtc);
+            return new FullReconcilePreviewAuthorization(
+                preview,
+                grant.Authorization,
+                grant.ExpiresAtUtc);
         }
     }
 
@@ -149,33 +135,18 @@ public sealed class FullReconcileSafetyService
             return null;
         }
 
-        lock (_sync)
+        var confirmation = _authorizationStore.Consume(
+            administratorId,
+            authorization,
+            candidate => candidate.PausedRunId == pausedRunId);
+        if (confirmation is null)
         {
-            if (!_authorizations.TryGetValue(authorization, out var entry))
-            {
-                return null;
-            }
-
-            if (entry.ExpiresAtUtc <= _timeProvider.GetUtcNow())
-            {
-                _authorizations.Remove(authorization);
-                return null;
-            }
-
-            if (entry.Confirmation.PausedRunId != pausedRunId
-                || entry.AdministratorId != administratorId)
-            {
-                return null;
-            }
-
-            _authorizations.Remove(authorization);
-            if (_persistence.Current.Revision != entry.Confirmation.ConfigurationRevision)
-            {
-                return null;
-            }
-
-            return entry.Confirmation;
+            return null;
         }
+
+        return _persistence.Current.Revision == confirmation.ConfigurationRevision
+            ? confirmation
+            : null;
     }
 
     private void PersistPaused(
@@ -186,7 +157,7 @@ public sealed class FullReconcileSafetyService
         IEnumerable<ReconciliationPlan> plans,
         DestructiveCircuitBreakerResult evaluation)
     {
-        _authorizations.Clear();
+        _authorizationStore.Clear();
         var persisted = PluginConfigurationCloner.Clone(current);
         persisted.PausedFullReconcile = PausedFullReconcileConfigurationMapper.Create(
             runId,
@@ -201,7 +172,7 @@ public sealed class FullReconcileSafetyService
 
     private void ClearPaused(PluginConfiguration current)
     {
-        _authorizations.Clear();
+        _authorizationStore.Clear();
         if (current.PausedFullReconcile is null)
         {
             return;
@@ -210,24 +181,5 @@ public sealed class FullReconcileSafetyService
         var persisted = PluginConfigurationCloner.Clone(current);
         persisted.PausedFullReconcile = null;
         _persistence.Save(persisted);
-    }
-
-    private sealed class AuthorizationEntry
-    {
-        public AuthorizationEntry(
-            Guid administratorId,
-            DateTimeOffset expiresAtUtc,
-            FullReconcileConfirmation confirmation)
-        {
-            AdministratorId = administratorId;
-            ExpiresAtUtc = expiresAtUtc;
-            Confirmation = confirmation;
-        }
-
-        public Guid AdministratorId { get; }
-
-        public DateTimeOffset ExpiresAtUtc { get; }
-
-        public FullReconcileConfirmation Confirmation { get; }
     }
 }
