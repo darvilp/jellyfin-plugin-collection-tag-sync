@@ -55,7 +55,9 @@ controller="$(curl --fail --silent --get \
     "${server_url}/web/ConfigurationPage")"
 if [[ "${controller}" != *'export default function (view)'* \
     || "${controller}" != *'CollectionTagSync/Configuration/Preview'* \
-    || "${controller}" != *'CollectionTagSync/RunOnce/Preview'* ]]; then
+    || "${controller}" != *'CollectionTagSync/RunOnce/Preview'* \
+    || "${controller}" != *'collectionTagSyncMappingEditors'* \
+    || "${controller}" != *'mappingSummaryLabel'* ]]; then
     printf 'The embedded thin UI controller was not served intact.\n' >&2
     exit 4
 fi

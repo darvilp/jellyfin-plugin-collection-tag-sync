@@ -757,26 +757,18 @@ A failure for one item does not abort the entire Full Reconcile. Continue with o
 
 ### 16.1 Continuous mappings page
 
-Display mapping groups by target:
+Display saved mapping groups as compact source-to-target summaries. The summary
+is the explicit Edit disclosure, configured groups start collapsed, and only one
+full editor is open at a time. A newly added group opens immediately:
 
 ```text
-Target: Collection "Animation"
-Policy: Authoritative
-Sources:
-  Tag "Animation"
-  Tag "Waltney"
-  Tag "Blooth"
-
-[Edit] [Disable] [Preview Reconcile]
+Tag “Animation” OR Tag “Waltney” OR Tag “Blooth” → Collection “Animation”
+Authoritative · Enabled                                             [Edit]
 ```
 
 ```text
-Target: Tag "kid-approved"
-Policy: Authoritative
-Sources:
-  Collection "Kid Approved"
-
-[Edit] [Disable] [Preview Reconcile]
+Collection “Kid Approved” → Tag “kid-approved”
+Authoritative · Enabled                                             [Edit]
 ```
 
 Controls:

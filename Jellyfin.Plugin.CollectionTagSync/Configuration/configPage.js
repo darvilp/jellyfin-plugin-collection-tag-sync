@@ -298,6 +298,27 @@ export default function (view) {
             </div>`;
     }
 
+    function nodeSummaryLabel(node) {
+        if (Number(property(node, 'Kind', 0)) === 0) {
+            const tagValue = String(property(node, 'TagValue', '') || '');
+            return tagValue ? `Tag “${tagValue}”` : 'Tag (not selected)';
+        }
+
+        const collectionId = String(property(node, 'CollectionId', '') || '');
+        const entry = state.collections.find(candidate =>
+            String(property(candidate, 'Id', '')).toLowerCase() === collectionId.toLowerCase());
+        if (entry) {
+            return `Collection “${property(entry, 'DisplayName', 'Unnamed collection')}”`;
+        }
+
+        if (!collectionId || collectionId === emptyGuid) {
+            return 'Collection (not selected)';
+        }
+
+        const storedName = String(property(node, 'CollectionDisplayName', '') || '');
+        return `Missing collection${storedName ? ` “${storedName}”` : ''} — ${collectionId}`;
+    }
+
     function nodeDisplayLabel(node) {
         if (Number(property(node, 'Kind', 0)) === 0) {
             return `Tag "${property(node, 'TagValue', '')}"`;
@@ -312,7 +333,19 @@ export default function (view) {
         return `Collection "${displayName}" — ${collectionId}`;
     }
 
-    function renderMappingGroups() {
+    function mappingSummaryLabel(group) {
+        const sources = property(group, 'Sources', []) ?? [];
+        const sourceLabels = sources.length > 0
+            ? sources.map(nodeSummaryLabel).join(' OR ')
+            : 'No sources';
+        return `${sourceLabels} → ${nodeSummaryLabel(property(group, 'Target', {}))}`;
+    }
+
+    function mappingPolicyLabel(policy) {
+        return Number(policy) === 1 ? 'Authoritative' : 'Additive';
+    }
+
+    function renderMappingGroups(expandedGroupIndex = null) {
         const container = query('#collectionTagSyncMappingGroups');
         const groups = property(state.configuration, 'MappingGroups', []) ?? [];
         if (groups.length === 0) {
@@ -326,38 +359,50 @@ export default function (view) {
             const policy = Number(property(group, 'Policy', 0));
             const enabled = Boolean(property(group, 'IsEnabled', false));
             return `
-                <article class="collectionTagSyncGroup" data-mapping-group>
-                    <h3 data-role="target-label">${escapeHtml(nodeDisplayLabel(target))}</h3>
-                    <div data-role="target">
-                        ${nodeEditorHtml(target, `mapping${groupIndex}Target`, 'Target', false)}
+                <details class="collectionTagSyncGroup" data-mapping-group
+                         name="collectionTagSyncMappingEditors"${expandedGroupIndex === groupIndex ? ' open' : ''}>
+                    <summary class="collectionTagSyncGroupSummary" data-action="edit-mapping">
+                        <span class="collectionTagSyncMappingFlow" data-role="mapping-summary-flow">${escapeHtml(mappingSummaryLabel(group))}</span>
+                        <span class="collectionTagSyncMappingMeta">
+                            <span data-role="mapping-summary-policy">${mappingPolicyLabel(policy)}</span>
+                            <span aria-hidden="true"> · </span>
+                            <span data-role="mapping-summary-state">${enabled ? 'Enabled' : 'Disabled'}</span>
+                            <span class="collectionTagSyncEditLabel">Edit</span>
+                        </span>
+                    </summary>
+                    <div data-role="mapping-editor">
+                        <h3>Edit mapping group ${groupIndex + 1}</h3>
+                        <div data-role="target">
+                            ${nodeEditorHtml(target, `mapping${groupIndex}Target`, 'Target', false)}
+                        </div>
+                        <h4>Sources</h4>
+                        <div data-role="sources">
+                            ${sources.map((source, sourceIndex) => nodeEditorHtml(
+                                source,
+                                `mapping${groupIndex}Source${sourceIndex}`,
+                                `Source ${sourceIndex + 1}`,
+                                true)).join('')}
+                        </div>
+                        <button is="emby-button" type="button" class="raised button"
+                                data-action="add-mapping-source"><span>Add source</span></button>
+                        <div class="selectContainer">
+                            <label class="selectLabel" for="mapping${groupIndex}Policy">Policy</label>
+                            <select is="emby-select" id="mapping${groupIndex}Policy" data-field="policy"
+                                    class="emby-select-withcolor emby-select">
+                                <option value="0"${policy === 0 ? ' selected' : ''}>Additive — preserve manual target state</option>
+                                <option value="1"${policy === 1 ? ' selected' : ''}>Authoritative — remove unsupported target state</option>
+                            </select>
+                        </div>
+                        <div class="checkboxContainer checkboxContainer-withDescription">
+                            <label class="emby-checkbox-label">
+                                <input is="emby-checkbox" type="checkbox" data-field="enabled"${enabled ? ' checked' : ''} />
+                                <span>Enabled</span>
+                            </label>
+                        </div>
+                        <button is="emby-button" type="button" class="raised button-warning"
+                                data-action="remove-mapping"><span>Delete mapping group</span></button>
                     </div>
-                    <h4>Sources</h4>
-                    <div data-role="sources">
-                        ${sources.map((source, sourceIndex) => nodeEditorHtml(
-                            source,
-                            `mapping${groupIndex}Source${sourceIndex}`,
-                            `Source ${sourceIndex + 1}`,
-                            true)).join('')}
-                    </div>
-                    <button is="emby-button" type="button" class="raised button"
-                            data-action="add-mapping-source"><span>Add source</span></button>
-                    <div class="selectContainer">
-                        <label class="selectLabel" for="mapping${groupIndex}Policy">Policy</label>
-                        <select is="emby-select" id="mapping${groupIndex}Policy" data-field="policy"
-                                class="emby-select-withcolor emby-select">
-                            <option value="0"${policy === 0 ? ' selected' : ''}>Additive — preserve manual target state</option>
-                            <option value="1"${policy === 1 ? ' selected' : ''}>Authoritative — remove unsupported target state</option>
-                        </select>
-                    </div>
-                    <div class="checkboxContainer checkboxContainer-withDescription">
-                        <label class="emby-checkbox-label">
-                            <input is="emby-checkbox" type="checkbox" data-field="enabled"${enabled ? ' checked' : ''} />
-                            <span>Enabled</span>
-                        </label>
-                    </div>
-                    <button is="emby-button" type="button" class="raised button-warning"
-                            data-action="remove-mapping"><span>Delete mapping group</span></button>
-                </article>`;
+                </details>`;
         }).join('');
     }
 
@@ -443,6 +488,16 @@ export default function (view) {
         };
     }
 
+    function readMappingGroup(group) {
+        return {
+            Target: readNode(group.querySelector('[data-role="target"] [data-node-editor]')),
+            Sources: [...group.querySelectorAll('[data-role="sources"] [data-node-editor]')]
+                .map(readNode),
+            Policy: Number(group.querySelector('[data-field="policy"]').value),
+            IsEnabled: group.querySelector('[data-field="enabled"]').checked
+        };
+    }
+
     function readCandidate() {
         return {
             SchemaVersion: Number(property(state.configuration, 'SchemaVersion', 1)),
@@ -455,13 +510,7 @@ export default function (view) {
             DestructiveCircuitBreakerDisableAcknowledged:
                 query('#collectionTagSyncCircuitBreakerAcknowledged').checked,
             PausedFullReconcile: property(state.configuration, 'PausedFullReconcile', null),
-            MappingGroups: queryAll('[data-mapping-group]').map(group => ({
-                Target: readNode(group.querySelector('[data-role="target"] [data-node-editor]')),
-                Sources: [...group.querySelectorAll('[data-role="sources"] [data-node-editor]')]
-                    .map(readNode),
-                Policy: Number(group.querySelector('[data-field="policy"]').value),
-                IsEnabled: group.querySelector('[data-field="enabled"]').checked
-            }))
+            MappingGroups: queryAll('[data-mapping-group]').map(readMappingGroup)
         };
     }
 
@@ -483,7 +532,7 @@ export default function (view) {
             IsEnabled: true
         });
         state.configuration = { ...state.configuration, MappingGroups: candidate.MappingGroups };
-        renderMappingGroups();
+        renderMappingGroups(candidate.MappingGroups.length - 1);
         configurationChanged();
     }
 
@@ -585,14 +634,18 @@ export default function (view) {
             'Warning');
     }
 
-    function updateMappingTargetLabel(changedElement) {
-        const group = changedElement.closest('[data-mapping-group]');
-        if (!group || !changedElement.closest('[data-role="target"]')) {
+    function updateMappingSummary(changedElement) {
+        const group = changedElement?.closest('[data-mapping-group]');
+        if (!group) {
             return;
         }
 
-        group.querySelector('[data-role="target-label"]').textContent = nodeDisplayLabel(
-            readNode(group.querySelector('[data-role="target"] [data-node-editor]')));
+        const mapping = readMappingGroup(group);
+        group.querySelector('[data-role="mapping-summary-flow"]').textContent = mappingSummaryLabel(mapping);
+        group.querySelector('[data-role="mapping-summary-policy"]').textContent = mappingPolicyLabel(mapping.Policy);
+        group.querySelector('[data-role="mapping-summary-state"]').textContent = mapping.IsEnabled
+            ? 'Enabled'
+            : 'Disabled';
     }
 
     function runOnceChanged(clearExclusions = true) {
@@ -1131,6 +1184,7 @@ export default function (view) {
             if (session.select.closest('#collectionTagSyncRunOnce')) {
                 runOnceChanged();
             } else {
+                updateMappingSummary(session.select);
                 configurationChanged();
             }
         }
@@ -1233,6 +1287,19 @@ export default function (view) {
     }
 
     view.addEventListener('click', async event => {
+        const mappingSummary = event.target.closest('summary[data-action="edit-mapping"]');
+        if (mappingSummary && view.contains(mappingSummary)) {
+            event.preventDefault();
+            const selectedGroup = mappingSummary.closest('[data-mapping-group]');
+            const shouldOpen = !selectedGroup.open;
+            for (const group of queryAll('[data-mapping-group]')) {
+                group.open = false;
+            }
+
+            selectedGroup.open = shouldOpen;
+            return;
+        }
+
         const button = event.target.closest('button[data-action]');
         if (!button || !view.contains(button)) {
             return;
@@ -1249,17 +1316,22 @@ export default function (view) {
             case 'add-mapping-source': {
                 const group = button.closest('[data-mapping-group]');
                 addSource(group.querySelector('[data-role="sources"]'), 'mappingSource');
+                updateMappingSummary(group);
                 configurationChanged();
                 break;
             }
-            case 'remove-node':
+            case 'remove-node': {
+                const group = button.closest('[data-mapping-group]');
+                const isRunOnce = Boolean(button.closest('#collectionTagSyncRunOnce'));
                 button.closest('[data-node-editor]').remove();
-                if (button.closest('#collectionTagSyncRunOnce')) {
+                if (isRunOnce) {
                     runOnceChanged();
                 } else {
+                    updateMappingSummary(group);
                     configurationChanged();
                 }
                 break;
+            }
             case 'save-configuration':
                 await activateConfiguration();
                 break;
@@ -1336,7 +1408,7 @@ export default function (view) {
         if (target.closest('#collectionTagSyncRunOnce')) {
             runOnceChanged();
         } else if (target.closest('#collectionTagSyncMappings')) {
-            updateMappingTargetLabel(target);
+            updateMappingSummary(target);
             configurationChanged();
         }
     });
@@ -1356,7 +1428,7 @@ export default function (view) {
         if (event.target.closest('#collectionTagSyncRunOnce')) {
             runOnceChanged();
         } else if (event.target.closest('#collectionTagSyncMappings')) {
-            updateMappingTargetLabel(event.target);
+            updateMappingSummary(event.target);
             configurationChanged();
         }
     });
