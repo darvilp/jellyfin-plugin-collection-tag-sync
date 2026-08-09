@@ -1,6 +1,6 @@
 # ADR-004 — V1 media and metadata scope
 
-**Status:** Proposed<br>
+**Status:** Accepted<br>
 **Decision owner:** Project maintainer<br>
 **Review gate:** Must be Accepted before production coding
 
@@ -43,4 +43,12 @@ Bluppy Series directly has tag kids:
 
 Bluppy Episode lacks a direct kids tag:
   Episode is ignored entirely in v1.
+```
+
+```text
+Bluppy Series is directly in Collection "Kids":
+  Collection source is true for the Series.
+
+Bluppy Episode appears beneath that Series:
+  Episode is ignored and receives no collection membership from the plugin.
 ```

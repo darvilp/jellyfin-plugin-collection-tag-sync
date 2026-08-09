@@ -52,6 +52,10 @@ The plugin is generic metadata synchronization. It does not directly manage Jell
 - Direct Jellyfin database manipulation.
 - Provenance-based “remove only what the plugin added” behavior.
 - Transactional rollback of partial Jellyfin mutations.
+- A global manual-only mode for persisted mappings; use run-once operations for
+  manual-only synchronization.
+- Durable per-item mapping exceptions or editable continuous/Full Reconcile
+  previews.
 - Publication into Jellyfin’s official plugin repository.
 
 ---
@@ -65,6 +69,19 @@ A synchronization node is one of:
 - `TagNode("Waltney")`
 - `CollectionNode(<Jellyfin collection GUID>)`
 
+### Tag identity
+
+Configured tag values are trimmed and must remain non-empty. Tag identity uses
+`StringComparer.OrdinalIgnoreCase` for matching, graph identity, target
+uniqueness, and add/remove planning, following the
+[Jellyfin 10.11.x casing research](research/jellyfin-tag-casing.md).
+
+If an item already contains a case-equivalent tag, the node is present and the
+existing spelling is preserved. When the plugin adds an absent tag, it writes
+the administrator's trimmed configured spelling. When a plan makes the logical
+tag absent, the writer removes every case-equivalent variant. Diacritic folding
+is not part of tag identity.
+
 ### Mapping group
 
 A mapping group has:
@@ -73,6 +90,8 @@ A mapping group has:
 - one or more source nodes;
 - one policy;
 - an enabled/disabled state.
+
+Sources within one group may mix tag and collection nodes.
 
 Example:
 
@@ -118,6 +137,8 @@ all tags → same-named collections
 ### 5.2 Many-to-many relationships
 
 The user interface groups rules by target, but the internal graph contains individual directed edges.
+One target group may combine tag and collection sources under the same OR
+aggregation rule.
 
 ```text
 Tag:Animation ──→ Collection:Animation
@@ -128,9 +149,10 @@ Tag:Waltney ─────→ Collection:Kids
 Tag:Waltney ─────→ Collection:American
 ```
 
-### 5.3 One active group per target
+### 5.3 One persisted group per target
 
-A target may appear in only one enabled continuous mapping group.
+A normalized target may appear in at most one persisted mapping group,
+regardless of whether that group is enabled or disabled.
 
 Invalid:
 
@@ -148,6 +170,9 @@ Policy: Authoritative
 ```
 
 This avoids policy conflicts and makes target behavior easy to inspect.
+Disabled groups continue to reserve their targets; alternate configurations are
+made by editing the existing group rather than storing duplicate disabled
+groups.
 
 ### 5.4 OR aggregation
 
@@ -183,7 +208,8 @@ Consequences:
 
 - A matching source adds missing target state.
 - Existing target state is preserved when no source matches.
-- Existing manual target state can feed downstream mappings.
+- Existing manual target state is effective state and can feed downstream
+  mappings.
 - Additive planning never emits a removal.
 
 ### 6.3 Authoritative target
@@ -196,7 +222,8 @@ Consequences:
 
 - A matching source adds missing target state.
 - Unsupported target state is removed.
-- Manual target state is not preserved unless a configured source supports it.
+- Manual or externally added target state is not preserved unless a configured
+  source supports it.
 - Authoritative changes can be destructive and therefore require preview/confirmation when removals are possible.
 
 ### 6.4 Topological evaluation
@@ -274,7 +301,8 @@ A continuous mapping is persisted in plugin configuration and participates in:
 - event-driven incremental reconciliation;
 - manual Full Reconcile;
 - scheduled Full Reconcile;
-- immediate reconciliation after valid configuration changes.
+- configuration-triggered background reconciliation enqueued before the valid
+  save response returns.
 
 Continuous mappings may point in either direction:
 
@@ -290,6 +318,9 @@ They may form multi-hop chains, but the complete enabled graph must remain acycl
 ## 9. Run-once operations
 
 A run-once operation uses the same source/target/policy concepts without persisting an active mapping.
+
+Its target must not already be managed by an enabled continuous group. A
+disabled persisted group does not block the operation.
 
 Examples:
 
@@ -307,19 +338,60 @@ Use cases:
 - Apply an ad hoc metadata conversion.
 - Run a continuous mapping temporarily, then disable it while preserving the result.
 
+Run-once is the V1 manual-only synchronization workflow. Automatic continuous
+mappings remain enabled while independent run-once operations are previewed and
+executed. V1 does not provide a global mode that persists continuous mappings
+while suppressing all automatic triggers.
+
 ### 9.1 Target collection selection
 
-When the target is a collection, the UI should provide:
+When the target is a collection, the UI must provide:
 
 1. A picker for existing collections.
-2. A `Create new collection…` option when technically feasible.
-3. Explicit collection creation followed by use of the returned Jellyfin GUID.
+2. An `Add new collection…` action within the picker.
+3. A distinct collection-creation workflow on the same screen.
+4. Automatic selection of the returned Jellyfin GUID after successful creation.
 
-The plugin does not silently match or rebind collections by name.
+Creation rejects an empty name or a trimmed, case-insensitive match to an
+existing collection name. It creates nothing and presents the existing matches
+for explicit selection. Pre-existing duplicate-named collections remain separate
+GUID identities and the picker shows disambiguating details for each.
+
+Successful creation takes effect immediately as an independent Jellyfin action.
+The collection remains if the administrator later cancels the mapping or
+run-once workflow, or if that workflow's save fails. The plugin does not roll
+the collection back automatically, and the UI must disclose this lifecycle
+before creation.
+
+Existing collections cannot be targeted through free-text name entry. The
+plugin does not silently match or rebind collections by name; entering a
+collection name occurs only inside the explicit creation workflow.
 
 ### 9.2 Run-once final state
 
 Preview and execution must include downstream effects of active continuous mappings.
+
+Authoritative run-once governs its target across the entire eligible Movie and
+Series library. Supported items gain the target and unsupported items lose it.
+An implementation may optimize candidate discovery to source matches plus
+existing target holders, but that must produce the same library-wide result.
+
+Planning is staged:
+
+1. Evaluate the active continuous DAG to establish baseline effective state.
+2. Evaluate the one-time target.
+3. Re-evaluate affected downstream continuous mappings to their final settled
+   state.
+
+This permits a reverse/bootstrap run-once path against an active continuous path
+without adding the one-time edge to the persisted graph.
+
+For each planned direct run-once target change, the preview may offer
+`Keep current target state`. Selecting it creates a run-once exclusion for that
+item: the planner preserves the observed target state and recomputes all
+downstream continuous effects before presenting the updated preview. Users
+cannot independently suppress cascaded operations. Exclusions are bound to one
+preview authorization and are never persisted.
 
 Example:
 
@@ -397,7 +469,10 @@ Validate the complete proposed graph when:
 
 Disabled groups do not participate in the active graph.
 
-Run-once operations are not persisted and therefore do not create a continuous graph cycle.
+Run-once operations are not persisted and therefore do not create a continuous
+graph cycle. A staged reverse/bootstrap path is allowed, but a run-once target
+already managed by an enabled continuous group is rejected. A disabled group
+does not block that target.
 
 ---
 
@@ -425,9 +500,36 @@ Preview and execution use the same reconciliation planner. There is no separate 
 The following require preview and explicit confirmation:
 
 - Authoritative run-once operations that remove state.
-- Enabling or editing an Authoritative continuous group when reconciliation would remove state.
+- Any candidate configuration whose reconciliation plan would remove state.
 
-If relevant Jellyfin state changes between preview and apply, the server should recompute. If the destructive delta changes materially, require a new confirmation rather than silently applying a different removal set.
+Preview operates on a complete candidate configuration without replacing the
+active configuration. It returns a preview authorization for the exact
+destructive removal set. The UI carries this opaque authorization between the
+Preview and Confirm actions; administrators do not handle it manually.
+
+Preview authorization:
+
+- expires after 10 minutes;
+- is single-use;
+- is bound to the initiating administrator, canonical candidate configuration or
+  operation request, run-once exclusion set, active-configuration revision, and
+  exact removal tuples of item GUID, normalized target node, and removal type;
+- is invalidated by Jellyfin/plugin restart;
+- becomes invalid if any removal tuple changes, even when the count is unchanged.
+
+Addition-only changes do not invalidate authorization and may be recomputed and
+applied because they are non-destructive.
+
+Preview editing is limited to per-item run-once exclusions on planned direct
+target changes. Continuous mapping and Full Reconcile previews are not editable;
+durable per-item mapping exceptions are outside V1.
+
+On confirmation, the serialized coordinator revalidates and recomputes. If the
+removal set changed, save nothing and require a new preview rather than silently
+applying different removals. If it still matches, persist the candidate and
+enqueue the recomputed plan through the background coordinator. The accepted
+configuration remains active if a later Jellyfin mutation partially fails; Full
+Reconcile repairs that state.
 
 ---
 
@@ -440,13 +542,25 @@ Configuration is validated server-side as a complete candidate configuration.
 A save succeeds only when:
 
 - each group has a target and at least one source;
-- target groups are unique by normalized node identity;
+- all persisted target groups are unique by normalized node identity, including
+  disabled groups;
 - sources are unique after normalization;
 - no self-edge exists;
 - the enabled graph is acyclic;
 - newly selected collection references resolve.
 
-After a successful save, affected mappings reconcile immediately.
+A removal-free candidate may save without mandatory preview, but the serialized
+coordinator recomputes immediately before persistence. If a removal appears, it
+saves nothing and requires preview and confirmation.
+
+After a successful removal-free save or confirmed destructive save, affected
+mappings reconcile in the background. The server persists the accepted
+configuration and enqueues reconciliation through the serialized coordinator
+before returning the save response. The response includes the active
+configuration revision and a reconciliation status reference; it does not wait
+for every Jellyfin mutation to finish. The status reports queued, running,
+completed, partially failed, failed, or paused-for-approval outcomes. The
+accepted configuration remains active if metadata application partially fails.
 
 ### 12.2 Disable or delete
 
@@ -466,11 +580,18 @@ Uninstall leaves all Jellyfin tags and collection memberships untouched.
 
 If a referenced collection is later deleted:
 
-- keep the mapping configuration;
-- mark it unresolved;
-- skip the affected group;
-- log and display a warning;
+- keep the mapping configuration and enabled state;
+- mark the entire group operationally unresolved;
+- skip every source and perform no target mutations from that group;
+- pass the target's current observed state through as effective state so valid
+  downstream groups can still evaluate;
+- do not partially evaluate a mixed-source group using only its remaining
+  resolvable sources;
+- log and display a persistent warning until repaired or disabled;
 - do not auto-rebind by name.
+
+This fail-closed behavior prevents a missing collection from being interpreted
+as false and causing unintended Authoritative removals.
 
 This is an invalid/broken configuration edge case and should use the simplest maintainable handling.
 
@@ -486,7 +607,15 @@ Expected Jellyfin inputs include:
 - collection item-removed events;
 - general item-updated events for possible tag changes;
 - configuration changes;
+- Jellyfin/plugin startup;
 - manual or scheduled Full Reconcile requests.
+
+External metadata providers, NFO imports, library scans, other plugins, and API
+clients may produce the same observed source and target changes. Once an
+Authoritative mapping is active, ordinary single-item changes from every writer
+reconcile without a new confirmation; the activation confirmation grants
+ongoing authority. Event storms and other bulk reconciliation paths remain
+subject to the destructive circuit breaker before Authoritative removals.
 
 The integration spike must verify exact event and persistence behavior against the selected Jellyfin ABI.
 
@@ -536,6 +665,9 @@ During a large scan or excessive dirty-set growth:
 - coalesce events;
 - execute broader reconciliation after the burst/scan.
 
+The resulting bulk reconciliation is subject to the destructive circuit breaker
+before it writes any mutations.
+
 Exact thresholds and scan-detection mechanics are implementation details verified during the integration spike.
 
 ---
@@ -547,9 +679,38 @@ Full Reconcile is the canonical repair mechanism.
 It should be available as:
 
 - a manually runnable Jellyfin scheduled task;
-- a configurable scheduled task.
+- a configurable scheduled task;
+- one delayed startup request when at least one continuous mapping is enabled.
+
+The startup request coalesces with another pending bulk request, runs through the
+serialized coordinator, and remains subject to the destructive circuit breaker.
+Its settling delay is administrator-configurable from 0 through 60 minutes and
+defaults to 5 minutes. Zero means as soon as Jellyfin is ready, not during plugin
+construction. If a library scan or event storm is still active when the delay
+expires, execution waits until that activity becomes quiet.
 
 For v1, Full Reconcile may enumerate all Movies and Series, evaluate the graph, and apply deltas. Optimization to narrower candidate sets can follow later.
+
+Full Reconcile calculates its complete plan before applying mutations. If
+planned Authoritative removals exceed the configured destructive safety limit:
+
+- apply none of the plan;
+- mark the run as awaiting administrator approval;
+- expose the item-level preview;
+- recompute and require current confirmation before execution.
+
+The circuit breaker is enabled by default and trips when either condition is
+true:
+
+- the bulk plan removes one or more target states from more than 25 unique
+  items; or
+- one mapping group removes more than 20 percent of its currently observed
+  target assignments, when that group currently has at least 10 assignments.
+
+An item with several planned removals counts once toward the absolute limit.
+Cascaded removals count toward the group that owns each removed target. Both
+limits are administrator-configurable. Disabling the circuit breaker entirely
+requires an explicit warning and confirmation.
 
 Full Reconcile repairs:
 
@@ -631,12 +792,22 @@ For tags:
 
 - autocomplete/discover existing tags where feasible;
 - permit explicit free-text entry;
-- normalize only after submission.
+- trim and validate only after submission;
+- show configured display spelling while matching tag identity with
+  `OrdinalIgnoreCase`.
 
 For collections:
 
-- picker of existing collections;
-- target picker includes `Create new collection…` where feasible;
+- picker-only selection of existing collections;
+- no free-text binding to an existing collection name;
+- target picker includes `Add new collection…`;
+- add-new opens a distinct creation workflow on the same screen and selects the
+  returned GUID after success;
+- add-new rejects empty or trimmed, case-insensitive duplicate names and shows
+  existing matches instead;
+- a successfully created collection remains if the surrounding workflow is
+  canceled or its save fails, with no automatic rollback;
+- pre-existing duplicate names appear as separate, disambiguated picker entries;
 - store GUID, not name, after selection.
 
 ### 16.3 Run-once page
@@ -665,7 +836,16 @@ Show:
 - unresolved collection references;
 - last Full Reconcile summary;
 - latest failed items/operations;
-- whether a broader reconciliation is pending after an event storm.
+- whether a broader reconciliation is pending after an event storm;
+- whether a bulk reconciliation is paused by the destructive circuit breaker.
+
+Provide administrator controls for the absolute removal limit, per-group
+percentage limit, percentage population floor, and circuit-breaker enabled
+state. Disabling the circuit breaker requires an explicit warning and
+confirmation.
+
+Provide an administrator control for the startup Full Reconcile delay from 0
+through 60 minutes, defaulting to 5 minutes.
 
 ---
 
@@ -703,6 +883,7 @@ Responsibilities:
 
 - dirty-item set;
 - serialized worker;
+- configuration-triggered background reconciliation and status;
 - Full Reconcile orchestration;
 - run-once orchestration;
 - preview orchestration;
@@ -803,6 +984,8 @@ sync graph
 ```
 
 Include a configuration schema version from the first release.
+Include a monotonically increasing active-configuration revision for preview
+authorization binding.
 
 ---
 
@@ -820,7 +1003,8 @@ Include a configuration schema version from the first release.
 ## 20. Architectural invariants
 
 1. **Explicit only:** Unreferenced tags and collections have no synchronization effect.
-2. **One target group:** A target has at most one enabled continuous group.
+2. **One target group:** A normalized target appears in at most one persisted
+   mapping group, including disabled groups.
 3. **OR sources:** Any effective source supports the target.
 4. **DAG:** The enabled continuous graph contains no directed cycle.
 5. **Direct scope:** Only direct Movie/Series state is evaluated or mutated.
@@ -831,6 +1015,12 @@ Include a configuration schema version from the first release.
 10. **No rollback:** Partial application is repaired later.
 11. **Metadata preservation on lifecycle changes:** Disable, delete, and uninstall do not clean up Jellyfin metadata.
 12. **No silent collection rebinding:** Collection GUIDs define identity.
+13. **Bulk destructive safety:** A bulk plan that exceeds the configured
+    Authoritative-removal limit applies no mutations without current
+    administrator confirmation.
+14. **Staged run-once:** A run-once operation cannot compete with an enabled
+    continuous target; it applies once and then affected downstream continuous
+    mappings settle without persisting its edge.
 
 ---
 
@@ -851,6 +1041,7 @@ Include a configuration schema version from the first release.
 - Direct and indirect cycles rejected
 - Human-readable cycle path
 - Destructive preview and confirmation
+- Bulk destructive-change circuit breaker
 - Multi-source-safe removals
 - Idempotent self-event settling
 - Serialized mutation
@@ -862,7 +1053,7 @@ Include a configuration schema version from the first release.
 - Scheduled Full Reconcile
 - Run-once operation
 - Existing collection picker
-- Explicit create-collection path where feasible
+- Explicit create-collection path
 - Event-storm degradation to broader reconciliation
 - Partial-failure reporting and deferred retry
 
