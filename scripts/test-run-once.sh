@@ -243,13 +243,14 @@ if ! jq --exit-status \
     --arg animation_id "${animation_id}" \
     --arg cascade_tag "${cascade_tag}" \
     --arg kids_id "${kids_id}" \
-    '(.Authorization.Preview.Items // .authorization.preview.items)[]
+    '((.Authorization.ExcludableItemIds // .authorization.excludableItemIds) | index($item_id)) != null
+     and ((.Authorization.Preview.Items // .authorization.preview.items)[]
         | select((.ItemId // .itemId) == $item_id)
         | (.Mutations // .mutations) as $mutations
         | (($mutations | length) == 3)
           and ($mutations | any((.Target.CollectionId // .target.collectionId) == $animation_id))
           and ($mutations | any((.Target.TagValue // .target.tagValue) == $cascade_tag))
-          and ($mutations | any((.Target.CollectionId // .target.collectionId) == $kids_id))' \
+          and ($mutations | any((.Target.CollectionId // .target.collectionId) == $kids_id)))' \
     <<<"${response_body}" >/dev/null; then
     printf 'Run-once preview did not contain the direct target and two downstream cascades.\n' >&2
     exit 8

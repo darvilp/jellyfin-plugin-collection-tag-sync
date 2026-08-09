@@ -783,7 +783,7 @@ Controls:
 
 - Add mapping group
 - Validate graph
-- Preview pending configuration
+- Preview candidate configuration
 - Run Full Reconcile
 
 ### 16.2 Node selectors
