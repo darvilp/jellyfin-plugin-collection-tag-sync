@@ -182,6 +182,7 @@ public sealed class ConfigurationActivationServiceTests
         var candidate = new PluginConfiguration
         {
             Revision = 999,
+            StartupReconcileDelayMinutes = 60,
             MappingGroups =
             [
                 Group(Collection(collectionId, "Animation"), [Tag("Waltney")], MappingPolicy.Additive),
@@ -193,6 +194,7 @@ public sealed class ConfigurationActivationServiceTests
         Assert.Equal(ConfigurationActivationOutcome.Accepted, result.Outcome);
         Assert.Equal(12, result.ActiveRevision);
         Assert.Equal(12, persistence.Current.Revision);
+        Assert.Equal(60, persistence.Current.StartupReconcileDelayMinutes);
         Assert.Equal(1, persistence.SaveCount);
         var requestId = Assert.IsType<Guid>(result.ReconciliationId);
         var status = Assert.IsType<BackgroundReconciliationStatus>(statusStore.Get(requestId));
@@ -200,6 +202,33 @@ public sealed class ConfigurationActivationServiceTests
         Assert.Equal(12, status.ConfigurationRevision);
         Assert.Equal(1, status.TotalItemCount);
         Assert.Equal(1, statusStore.Count);
+    }
+
+    [Theory]
+    [InlineData(-1)]
+    [InlineData(61)]
+    public async Task InvalidStartupReconcileDelayDoesNotReplaceActiveConfiguration(int delayMinutes)
+    {
+        var persistence = new RecordingConfigurationPersistence(new PluginConfiguration { Revision = 7 });
+        var statusStore = new BackgroundReconciliationStatusStore();
+        using var service = CreateService(
+            persistence,
+            new FixedCatalog([], []),
+            new FixedStateReader(),
+            statusStore);
+        var candidate = new PluginConfiguration
+        {
+            StartupReconcileDelayMinutes = delayMinutes,
+        };
+
+        var result = await service.ActivateAsync(candidate, CancellationToken.None).ConfigureAwait(true);
+
+        Assert.Equal(ConfigurationActivationOutcome.Invalid, result.Outcome);
+        Assert.Equal(7, result.ActiveRevision);
+        Assert.Contains(result.ValidationErrors, error =>
+            error.Code == ConfigurationActivationErrorCode.InvalidCandidate);
+        Assert.Equal(0, persistence.SaveCount);
+        Assert.Equal(0, statusStore.Count);
     }
 
     [Fact]

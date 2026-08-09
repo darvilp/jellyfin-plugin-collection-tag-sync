@@ -21,6 +21,7 @@ internal sealed partial class JellyfinEventObserver : IHostedService
     private readonly ILibraryManager _libraryManager;
     private readonly ICollectionManager _collectionManager;
     private readonly IDirtyItemSink _dirtyItemSink;
+    private readonly IReconciliationActivityMonitor _activityMonitor;
     private readonly ILogger<JellyfinEventObserver> _logger;
 
     /// <summary>
@@ -29,16 +30,19 @@ internal sealed partial class JellyfinEventObserver : IHostedService
     /// <param name="libraryManager">The Jellyfin library manager.</param>
     /// <param name="collectionManager">The Jellyfin collection manager.</param>
     /// <param name="dirtyItemSink">The dirty-item sink.</param>
+    /// <param name="activityMonitor">The scan and event-activity monitor.</param>
     /// <param name="logger">The logger.</param>
     public JellyfinEventObserver(
         ILibraryManager libraryManager,
         ICollectionManager collectionManager,
         IDirtyItemSink dirtyItemSink,
+        IReconciliationActivityMonitor activityMonitor,
         ILogger<JellyfinEventObserver> logger)
     {
         _libraryManager = libraryManager;
         _collectionManager = collectionManager;
         _dirtyItemSink = dirtyItemSink;
+        _activityMonitor = activityMonitor;
         _logger = logger;
     }
 
@@ -107,6 +111,7 @@ internal sealed partial class JellyfinEventObserver : IHostedService
     {
         if (item is Movie or Series)
         {
+            _activityMonitor.RecordActivity();
             _dirtyItemSink.MarkDirty(item.Id);
         }
     }

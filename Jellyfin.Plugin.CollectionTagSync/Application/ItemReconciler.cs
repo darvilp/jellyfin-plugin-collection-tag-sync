@@ -61,6 +61,27 @@ public sealed class ItemReconciler
         MappingConfiguration configuration,
         CancellationToken cancellationToken)
     {
+        var plan = await PlanAsync(itemId, configuration, cancellationToken).ConfigureAwait(false);
+        if (plan is not null)
+        {
+            await ApplyAsync(plan, cancellationToken).ConfigureAwait(false);
+        }
+
+        return plan;
+    }
+
+    /// <summary>
+    /// Reads and plans one item without applying mutations.
+    /// </summary>
+    /// <param name="itemId">The Jellyfin item identifier.</param>
+    /// <param name="configuration">The immutable operational configuration.</param>
+    /// <param name="cancellationToken">The cancellation token.</param>
+    /// <returns>The complete item plan, or <see langword="null"/> when the item is no longer eligible.</returns>
+    internal async Task<ReconciliationPlan?> PlanAsync(
+        Guid itemId,
+        MappingConfiguration configuration,
+        CancellationToken cancellationToken)
+    {
         ArgumentNullException.ThrowIfNull(configuration);
 
         var observedState = await _stateReader
@@ -71,12 +92,23 @@ public sealed class ItemReconciler
             return null;
         }
 
-        var plan = ReconciliationPlanner.Plan(configuration, observedState);
+        return ReconciliationPlanner.Plan(configuration, observedState);
+    }
+
+    /// <summary>
+    /// Applies one previously calculated item plan with the shared writer.
+    /// </summary>
+    /// <param name="plan">The complete item plan.</param>
+    /// <param name="cancellationToken">The cancellation token.</param>
+    /// <returns>A task representing the write.</returns>
+    internal async Task ApplyAsync(
+        ReconciliationPlan plan,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(plan);
         if (plan.Mutations.Count > 0)
         {
             await _planWriter.ApplyAsync(plan, cancellationToken).ConfigureAwait(false);
         }
-
-        return plan;
     }
 }

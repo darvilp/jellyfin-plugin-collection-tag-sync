@@ -41,7 +41,15 @@ public sealed class ReconciliationStormTests
         Assert.Equal(0, worker.Status.QueuedItemCount);
         Assert.True(worker.Status.IsStormFallbackActive);
 
-        worker.ResetAfterFullReconcile();
+        Assert.True(fullReconcileRequests.TryClaim(out var request));
+        request.Complete(new FullReconcileRunResult(
+            request.Id,
+            FullReconcileState.Completed,
+            request.Reasons,
+            totalItemCount: 0,
+            succeededItemCount: 0,
+            failedItemCount: 0));
+        worker.CompleteFullReconcile([], []);
         worker.MarkDirty(laterId);
         Assert.False(worker.Status.IsStormFallbackActive);
         Assert.Equal(1, worker.Status.QueuedItemCount);
