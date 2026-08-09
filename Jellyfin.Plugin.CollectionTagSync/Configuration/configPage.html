@@ -12,18 +12,13 @@
 
         <datalist id="collectionTagSyncTagChoices"></datalist>
 
-        <section id="collectionTagSyncMappings" class="verticalSection" aria-labelledby="collectionTagSyncMappingsTitle">
-            <h2 id="collectionTagSyncMappingsTitle" class="sectionTitle">Continuous mappings</h2>
+        <section id="collectionTagSyncReconciliationSafety" class="verticalSection"
+                 aria-labelledby="collectionTagSyncReconciliationSafetyTitle">
+            <h2 id="collectionTagSyncReconciliationSafetyTitle" class="sectionTitle">Reconciliation and safety</h2>
             <p class="fieldDescription">
-                Additive mappings preserve manual target state and only add supported targets. Authoritative mappings
-                make the configured sources decisive and may remove unsupported targets.
+                These settings apply globally. They are saved and validated with the complete configuration using the
+                actions below Continuous mappings.
             </p>
-            <div id="collectionTagSyncMappingGroups"></div>
-            <button is="emby-button" type="button" class="raised button block" data-action="add-mapping">
-                <span>Add mapping group</span>
-            </button>
-
-            <h3>Reconciliation and safety</h3>
             <div class="inputContainer">
                 <label class="inputLabel inputLabelUnfocused" for="collectionTagSyncStartupDelay">Startup Full Reconcile delay (minutes)</label>
                 <input is="emby-input" id="collectionTagSyncStartupDelay" type="number" min="0" max="60" step="1" />
@@ -35,24 +30,42 @@
                 </label>
                 <div class="fieldDescription">Pauses a bulk plan before any writes when configured removal limits are exceeded.</div>
             </div>
-            <div class="inputContainer">
-                <label class="inputLabel inputLabelUnfocused" for="collectionTagSyncMaximumItems">Maximum affected items</label>
-                <input is="emby-input" id="collectionTagSyncMaximumItems" type="number" min="0" step="1" />
-            </div>
-            <div class="inputContainer">
-                <label class="inputLabel inputLabelUnfocused" for="collectionTagSyncMaximumPercentage">Maximum removal percentage per group</label>
-                <input is="emby-input" id="collectionTagSyncMaximumPercentage" type="number" min="0" max="100" step="1" />
-            </div>
-            <div class="inputContainer">
-                <label class="inputLabel inputLabelUnfocused" for="collectionTagSyncMinimumPopulation">Minimum assignment population for percentage checks</label>
-                <input is="emby-input" id="collectionTagSyncMinimumPopulation" type="number" min="0" step="1" />
-            </div>
+            <details id="collectionTagSyncAdvancedSafety" class="collectionTagSyncAdvancedSafety">
+                <summary>Advanced safety thresholds</summary>
+                <p class="fieldDescription">
+                    Adjust the limits that pause bulk removal plans. The defaults are intended for ordinary libraries.
+                </p>
+                <div class="inputContainer">
+                    <label class="inputLabel inputLabelUnfocused" for="collectionTagSyncMaximumItems">Maximum affected items</label>
+                    <input is="emby-input" id="collectionTagSyncMaximumItems" type="number" min="0" step="1" />
+                </div>
+                <div class="inputContainer">
+                    <label class="inputLabel inputLabelUnfocused" for="collectionTagSyncMaximumPercentage">Maximum removal percentage per group</label>
+                    <input is="emby-input" id="collectionTagSyncMaximumPercentage" type="number" min="0" max="100" step="1" />
+                </div>
+                <div class="inputContainer">
+                    <label class="inputLabel inputLabelUnfocused" for="collectionTagSyncMinimumPopulation">Minimum assignment population for percentage checks</label>
+                    <input is="emby-input" id="collectionTagSyncMinimumPopulation" type="number" min="0" step="1" />
+                </div>
+            </details>
             <div id="collectionTagSyncCircuitBreakerWarning" class="checkboxContainer checkboxContainer-withDescription" hidden>
                 <label class="emby-checkbox-label">
                     <input is="emby-checkbox" id="collectionTagSyncCircuitBreakerAcknowledged" type="checkbox" />
                     <span>I understand that disabling this protection permits large Authoritative removals.</span>
                 </label>
             </div>
+        </section>
+
+        <section id="collectionTagSyncMappings" class="verticalSection" aria-labelledby="collectionTagSyncMappingsTitle">
+            <h2 id="collectionTagSyncMappingsTitle" class="sectionTitle">Continuous mappings</h2>
+            <p class="fieldDescription">
+                Additive mappings preserve manual target state and only add supported targets. Authoritative mappings
+                make the configured sources decisive and may remove unsupported targets.
+            </p>
+            <div id="collectionTagSyncMappingGroups"></div>
+            <button is="emby-button" type="button" class="raised button block" data-action="add-mapping">
+                <span>Add mapping group</span>
+            </button>
 
             <p class="fieldDescription">
                 Save configuration validates with the server and saves immediately when no removals are needed.
@@ -181,6 +194,8 @@
             font-weight: 600;
             margin-left: auto;
         }
+        .collectionTagSyncAdvancedSafety { margin: 1rem 0; }
+        .collectionTagSyncAdvancedSafety > summary { cursor: pointer; font-weight: 600; }
         .collectionTagSyncActions { display: flex; flex-wrap: wrap; gap: .75rem; margin: 1rem 0; }
         .collectionTagSyncActions .emby-button { margin: 0; }
         .collectionTagSyncStatus { margin: .75rem 0; min-height: 1.5rem; }

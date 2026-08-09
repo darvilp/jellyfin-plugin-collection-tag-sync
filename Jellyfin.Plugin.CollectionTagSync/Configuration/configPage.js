@@ -1407,8 +1407,12 @@ export default function (view) {
 
         if (target.closest('#collectionTagSyncRunOnce')) {
             runOnceChanged();
-        } else if (target.closest('#collectionTagSyncMappings')) {
-            updateMappingSummary(target);
+        } else if (target.closest('#collectionTagSyncMappings')
+            || target.closest('#collectionTagSyncReconciliationSafety')) {
+            if (target.closest('#collectionTagSyncMappings')) {
+                updateMappingSummary(target);
+            }
+
             configurationChanged();
         }
     });
@@ -1427,8 +1431,12 @@ export default function (view) {
 
         if (event.target.closest('#collectionTagSyncRunOnce')) {
             runOnceChanged();
-        } else if (event.target.closest('#collectionTagSyncMappings')) {
-            updateMappingSummary(event.target);
+        } else if (event.target.closest('#collectionTagSyncMappings')
+            || event.target.closest('#collectionTagSyncReconciliationSafety')) {
+            if (event.target.closest('#collectionTagSyncMappings')) {
+                updateMappingSummary(event.target);
+            }
+
             configurationChanged();
         }
     });

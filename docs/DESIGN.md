@@ -757,6 +757,14 @@ A failure for one item does not abort the entire Full Reconcile. Continue with o
 
 ### 16.1 Continuous mappings page
 
+Place a distinct **Reconciliation and safety** section above Continuous
+mappings. Keep the startup Full Reconcile delay and circuit-breaker switch
+visible. Put the numeric removal thresholds in a collapsed **Advanced safety
+thresholds** disclosure, while keeping the required disable acknowledgment
+visible whenever protection is off. These global fields remain part of the same
+complete candidate configuration and use the configuration actions below the
+mapping list.
+
 Display saved mapping groups as compact source-to-target summaries. The summary
 is the explicit Edit disclosure, configured groups start collapsed, and only one
 full editor is open at a time. A newly added group opens immediately:

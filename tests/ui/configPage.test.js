@@ -709,6 +709,49 @@ test('configuration actions explain the branching save and preview workflow', as
     assert.doesNotMatch(html, /Validate and save|Preview candidate configuration|Confirm previewed configuration/);
 });
 
+test('global reconciliation and advanced safety settings precede continuous mappings', async () => {
+    const html = await readFile(new URL(
+        '../../Jellyfin.Plugin.CollectionTagSync/Configuration/configPage.html',
+        import.meta.url), 'utf8');
+    const safetyStart = html.indexOf('<section id="collectionTagSyncReconciliationSafety"');
+    const mappingsStart = html.indexOf('<section id="collectionTagSyncMappings"');
+    const safetyEnd = html.indexOf('</section>', safetyStart);
+    const safety = html.slice(safetyStart, safetyEnd);
+    const advancedStart = safety.indexOf('<details id="collectionTagSyncAdvancedSafety"');
+    const advancedEnd = safety.indexOf('</details>', advancedStart);
+
+    assert.ok(safetyStart > 0);
+    assert.ok(safetyStart < mappingsStart);
+    assert.match(safety, /<h2[^>]*>Reconciliation and safety<\/h2>/);
+    assert.ok(safety.indexOf('id="collectionTagSyncStartupDelay"') < advancedStart);
+    assert.ok(safety.indexOf('id="collectionTagSyncCircuitBreakerEnabled"') < advancedStart);
+    assert.match(safety.slice(advancedStart, advancedEnd), /Advanced safety thresholds/);
+    assert.match(safety.slice(advancedStart, advancedEnd), /id="collectionTagSyncMaximumItems"/);
+    assert.match(safety.slice(advancedStart, advancedEnd), /id="collectionTagSyncMaximumPercentage"/);
+    assert.match(safety.slice(advancedStart, advancedEnd), /id="collectionTagSyncMinimumPopulation"/);
+    assert.ok(safety.indexOf('id="collectionTagSyncCircuitBreakerWarning"') > advancedEnd);
+    assert.doesNotMatch(safety.slice(advancedStart, advancedEnd), /\sopen(?:\s|>)/);
+    assert.doesNotMatch(html.slice(mappingsStart), /<h3>Reconciliation and safety<\/h3>/);
+});
+
+test('editing global reconciliation settings invalidates a destructive configuration preview', async () => {
+    const { view } = createHarness(async path =>
+        path === 'CollectionTagSync/Configuration/Preview'
+            ? configurationPreview({ removals: 1 })
+            : {});
+    await view.dispatch('click', button('preview-configuration'));
+    assert.equal(view.querySelector('#collectionTagSyncConfigurationPreview').hidden, false);
+
+    const safetySetting = new FakeElement({
+        closest: { '#collectionTagSyncReconciliationSafety': {} }
+    });
+    await view.dispatch('input', safetySetting);
+
+    assert.equal(view.querySelector('#collectionTagSyncConfigurationPreview').hidden, true);
+    assert.equal(view.querySelector('[data-action="confirm-configuration"]').hidden, true);
+    assert.match(view.querySelector('#collectionTagSyncConfigurationStatus').textContent, /configuration changed/i);
+});
+
 test('removal-free save reports configuration acceptance before background settlement', async () => {
     const { calls, view } = createHarness(async path => {
         if (path === 'CollectionTagSync/Configuration') {
