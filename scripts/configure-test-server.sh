@@ -10,7 +10,20 @@ admin_name="jfts-admin"
 admin_password="jfts-local-only"
 client_authorization='MediaBrowser Client="Collection Tag Sync Tests", Device="WSL", DeviceId="collection-tag-sync-tests", Version="0.1.0.0"'
 
-wizard_complete="$(curl --fail --silent "${server_url}/System/Info/Public" | jq --raw-output .StartupWizardCompleted)"
+public_info=''
+for _ in {1..30}; do
+    if public_info="$(curl --fail --silent "${server_url}/System/Info/Public")"; then
+        break
+    fi
+
+    sleep 1
+done
+if [[ -z "${public_info}" ]]; then
+    printf 'Jellyfin did not accept setup requests after becoming healthy.\n' >&2
+    exit 2
+fi
+
+wizard_complete="$(jq --raw-output .StartupWizardCompleted <<<"${public_info}")"
 if [[ "${wizard_complete}" != "true" ]]; then
     curl --fail --silent --request POST \
         --header 'Content-Type: application/json' \

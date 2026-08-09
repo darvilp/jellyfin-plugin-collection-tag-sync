@@ -2,7 +2,10 @@
 
 set -euo pipefail
 
+script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 artifact_path="${1:-}"
+expected_version="${2:-$("${script_dir}/read-build-metadata.sh" version)}"
+expected_target_abi="${3:-$("${script_dir}/read-build-metadata.sh" targetAbi)}"
 if [[ -z "${artifact_path}" || ! -f "${artifact_path}" ]]; then
     printf 'Package does not exist: %s\n' "${artifact_path}" >&2
     exit 2
@@ -22,10 +25,12 @@ if [[ "${package_entries[0]}" != "Jellyfin.Plugin.CollectionTagSync.dll" || "${p
 fi
 
 if ! unzip -p "${artifact_path}" meta.json | jq --exit-status \
+    --arg version "${expected_version}" \
+    --arg target_abi "${expected_target_abi}" \
     '.name == "Collection Tag Sync"
      and .guid == "04920eee-c499-4b13-890f-7af0175f28f0"
-     and .version == "0.1.0.0"
-     and .targetAbi == "10.11.11.0"' >/dev/null; then
+     and .version == $version
+     and .targetAbi == $target_abi' >/dev/null; then
     printf 'Package metadata does not match the pinned plugin contract.\n' >&2
     exit 5
 fi

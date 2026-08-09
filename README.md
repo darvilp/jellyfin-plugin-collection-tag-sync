@@ -4,9 +4,10 @@ Collection Tag Sync is a third-party Jellyfin server plugin for explicit,
 policy-driven synchronization between direct Movie and Series tags and
 collection memberships.
 
-> **Project status:** The V1 engine and administrator UI now include continuous
-> and Full Reconcile workflows, destructive preview/confirmation, and previewed
-> run-once execution. Release hardening remains in progress.
+> **Project status:** V1 alpha. The server engine and administrator UI include
+> continuous and Full Reconcile workflows, destructive preview/confirmation,
+> and previewed run-once execution. Treat the current package as prerelease
+> software and back up Jellyfin before installing it.
 
 ## Implemented server capabilities
 
@@ -20,6 +21,29 @@ collection memberships.
 - Thin administrator UI over the server-validated configuration and operation APIs
 
 The plugin will not automatically convert every Jellyfin tag into a collection.
+
+## Alpha installation
+
+V1 targets Jellyfin 10.11.11 (`targetAbi` 10.11.11.0). In the Jellyfin
+administrator dashboard:
+
+1. Open **Plugins → Repositories**.
+2. Add `Collection Tag Sync` with this repository URL:
+
+   ```text
+   https://raw.githubusercontent.com/darvilp/jellyfin-plugin-collection-tag-sync/manifest/manifest.json
+   ```
+
+3. Open **Catalog**, select **Collection Tag Sync**, and install version
+   `0.1.0.0`.
+4. Restart Jellyfin when prompted.
+5. Open **Dashboard → Plugins → Collection Tag Sync** to configure mappings or
+   run one-time operations.
+
+Back up Jellyfin's configuration and data before alpha installation or upgrade.
+Uninstalling the plugin does not undo tag or collection metadata it previously
+synchronized. See the [alpha release notes](docs/releases/v0.1.0.0-alpha.md)
+for compatibility and known limitations.
 
 ## Documentation
 
@@ -35,8 +59,8 @@ The plugin will not automatically convert every Jellyfin tag into a collection.
 
 ## Development
 
-The target-ABI integration spike is complete. Behavioral implementation follows
-the ordered GitHub issue backlog, a test-first workflow, and the phased plan in
+The target-ABI integration spike and V1 implementation are complete. Ongoing
+work follows the test-first workflow and phased plan in
 [docs/PLAN.md](docs/PLAN.md).
 
 ## License

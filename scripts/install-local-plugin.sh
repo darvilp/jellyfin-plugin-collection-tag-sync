@@ -4,7 +4,8 @@ set -euo pipefail
 
 script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 project_root="$(cd -- "${script_dir}/.." && pwd)"
-artifact_path="${1:-${project_root}/artifacts/collection-tag-sync_0.1.0.0.zip}"
+plugin_version="$("${script_dir}/read-build-metadata.sh" version)"
+artifact_path="${1:-${project_root}/artifacts/collection-tag-sync_${plugin_version}.zip}"
 plugin_root="${project_root}/.testenv/jellyfin/config/plugins"
 
 bash "${script_dir}/verify-package.sh" "${artifact_path}"

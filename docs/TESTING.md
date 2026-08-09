@@ -72,6 +72,12 @@ Covers:
 - upgrade from prior version;
 - configuration retention.
 
+The release-tooling contract also rejects tag/build/assembly/package/manifest
+version drift, verifies the manifest's exact immutable asset URL and JPRM
+checksum, and verifies the human-readable SHA-256 companion file. A true
+cross-version upgrade test is required beginning with the second public package;
+the first release cannot manufacture prior-release evidence.
+
 ---
 
 ## 3. High-value properties

@@ -170,6 +170,7 @@ bash scripts/dotnet.sh test Jellyfin.Plugin.CollectionTagSync.sln \
 node --check --experimental-default-type=module \
   Jellyfin.Plugin.CollectionTagSync/Configuration/configPage.js
 node --test --experimental-default-type=module tests/ui/configPage.test.js
+tests/release/release-tooling.test.sh
 bash scripts/package.sh
 bash scripts/install-local-plugin.sh
 bash scripts/test-event-observation.sh
@@ -223,7 +224,11 @@ Validated results:
   controls, elevated tag/status support, and background Full Reconcile queueing
   passed;
 - manual package install: passed;
-- temporary-manifest catalog install: passed.
+- temporary-manifest catalog install: passed;
+- release tooling: exact four-component version/ABI/framework alignment,
+  two-file package inspection, canonical asset naming, SHA-256 verification,
+  JPRM checksum verification, exact immutable `sourceUrl`, pinned Actions, and
+  least-privilege workflow structure passed locally and through `actionlint`.
 
 ## Boundaries carried forward
 
@@ -244,7 +249,9 @@ Validated results:
   GUID-only picker and independent creation boundary used by both configuration
   and run-once UI workflows. Phase 7 embeds those workflows in Jellyfin while
   retaining all graph, policy, threshold, preview, and authorization decisions
-  on the server.
+  on the server. Phase 8 derives package/install versions from `build.yaml`,
+  builds an exact tag under read-only permissions, and confines release and
+  generated-manifest writes to the serialized publishing job.
 - The create endpoint's independent persistence, duplicate recovery, and
   cancellation/save-failure behavior are covered at the application boundary.
   The administration UI renders the distinct creation action and discloses its

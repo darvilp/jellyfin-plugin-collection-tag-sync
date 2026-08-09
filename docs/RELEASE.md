@@ -66,6 +66,13 @@ If later supporting incompatible Jellyfin ABI lines, publish separate compatible
 
 The generated `manifest.json` lives on the dedicated `manifest` branch rather than being manually edited on `main`.
 
+The implemented workflow is `.github/workflows/release.yml`. A four-component
+version-tag push runs the build with read-only repository permissions. Only
+after that job passes does a separate `contents: write` job create a draft,
+upload and verify assets, prepare the manifest commit, publish the prerelease,
+and expose the generated manifest. A manual dispatch revalidates an existing
+tag without running the publishing job.
+
 ---
 
 ## 4. Plugin metadata
@@ -264,20 +271,25 @@ For the first release:
 jprm repo init <manifest-worktree>
 ```
 
-For every release, use the immutable GitHub Release asset base URL:
+For every release, use the complete immutable GitHub Release asset URL:
 
 ```text
-https://github.com/<owner>/<repo>/releases/download/v<VERSION>
+https://github.com/<owner>/<repo>/releases/download/v<VERSION>/Jellyfin.Plugin.CollectionTagSync_<VERSION>.zip
 ```
 
 Then add the package:
 
 ```bash
 jprm repo add \
-  --url="$RELEASE_BASE_URL" \
-  <manifest-worktree>/manifest.json \
+  --plugin-url="$RELEASE_ASSET_URL" \
+  <manifest-worktree> \
   "$ZIP"
 ```
+
+`--plugin-url` is required for GitHub Release assets. JPRM's repository-base
+`--url` mode appends its normal plugin subdirectory, but GitHub Release assets
+live directly below the tag URL. The release contract rejects any generated
+`sourceUrl` other than the exact immutable asset URL.
 
 Commit and push the updated generated manifest to the `manifest` branch.
 
@@ -296,7 +308,10 @@ On a clean/reproducible Jellyfin instance:
 7. Upgrade from the prior release when one exists.
 8. Confirm configuration is retained.
 
-The initial smoke test may be manual and documented. Automate it later if maintenance value justifies the effort.
+The temporary-catalog installation is automated. A true cross-version
+upgrade/configuration-retention smoke test becomes possible when a second
+package version exists; the first public release records that boundary instead
+of claiming an upgrade that cannot yet occur.
 
 ---
 

@@ -45,6 +45,7 @@ bash scripts/dotnet.sh test Jellyfin.Plugin.CollectionTagSync.sln \
 node --check --experimental-default-type=module \
   Jellyfin.Plugin.CollectionTagSync/Configuration/configPage.js
 node --test --experimental-default-type=module tests/ui/configPage.test.js
+tests/release/release-tooling.test.sh
 ```
 
 ## Isolated Jellyfin server
@@ -105,6 +106,13 @@ bash scripts/test-manifest-install.sh
 The last script creates an ignored temporary JPRM catalog, serves it only for
 the duration of the test, asks Jellyfin to install from that catalog, restores
 the server's original repository list, and stops the temporary HTTP server.
+
+Release tooling can revalidate an existing four-component tag without mutation
+by manually dispatching the `Release` GitHub workflow with that tag. The manual
+job has read-only repository permission. Pushing a new four-component version
+tag runs the same validation, then creates a draft, uploads and verifies the
+immutable ZIP/SHA-256 pair, publishes the prerelease, and generates the
+`manifest` branch.
 
 See [Jellyfin 10.11.11 compatibility](compatibility/jellyfin-10.11.11.md) for
 the exact validated contract and known boundaries.
