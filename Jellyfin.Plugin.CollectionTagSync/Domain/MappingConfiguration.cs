@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 
 namespace Jellyfin.Plugin.CollectionTagSync.Domain;
 
@@ -11,12 +12,21 @@ public sealed class MappingConfiguration
     private MappingConfiguration(IEnumerable<MappingGroup> groups)
     {
         Groups = Array.AsReadOnly([.. groups]);
+        ActiveGraph = new ContinuousGraph(
+            Groups
+                .Where(group => group.IsEnabled)
+                .SelectMany(group => group.Sources.Select(source => new MappingEdge(source, group.Target))));
     }
 
     /// <summary>
     /// Gets the validated mapping groups.
     /// </summary>
     public IReadOnlyList<MappingGroup> Groups { get; }
+
+    /// <summary>
+    /// Gets the graph formed by enabled continuous mapping groups.
+    /// </summary>
+    public ContinuousGraph ActiveGraph { get; }
 
     /// <summary>
     /// Validates and normalizes candidate mapping groups.
@@ -98,9 +108,34 @@ public sealed class MappingConfiguration
             groupIndex++;
         }
 
-        return errors.Count == 0
-            ? new MappingConfigurationValidationResult(new MappingConfiguration(groups), errors)
-            : new MappingConfigurationValidationResult(null, errors);
+        if (errors.Count > 0)
+        {
+            return new MappingConfigurationValidationResult(null, errors);
+        }
+
+        var configuration = new MappingConfiguration(groups);
+        if (configuration.ActiveGraph.CyclePath.Count == 0)
+        {
+            return new MappingConfigurationValidationResult(configuration, errors);
+        }
+
+        var cyclePath = configuration.ActiveGraph.CyclePath;
+        var closingSource = cyclePath[^2];
+        var closingTarget = cyclePath[^1];
+        var cycleGroupIndex = groups.FindIndex(group => group.Target.Equals(closingTarget));
+        var cycleSourceIndex = groups[cycleGroupIndex].Sources
+            .Select((source, index) => (source, index))
+            .First(pair => pair.source.Equals(closingSource))
+            .index;
+        var message = "Cannot activate mapping configuration because it creates a synchronization cycle:\n\n"
+            + string.Join("\n→ ", cyclePath.Select(node => node.DisplayLabel));
+        errors.Add(new MappingValidationError(
+            MappingValidationErrorCode.Cycle,
+            message,
+            cycleGroupIndex,
+            cycleSourceIndex,
+            cyclePath));
+        return new MappingConfigurationValidationResult(null, errors);
     }
 
     private static Node? CreateNode(

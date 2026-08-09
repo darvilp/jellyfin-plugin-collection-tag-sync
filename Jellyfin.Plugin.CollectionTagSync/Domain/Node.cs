@@ -14,6 +14,11 @@ public abstract class Node : IEquatable<Node>
     {
     }
 
+    /// <summary>
+    /// Gets an administrator-facing identity label.
+    /// </summary>
+    public abstract string DisplayLabel { get; }
+
     /// <inheritdoc />
     public abstract bool Equals(Node? other);
 

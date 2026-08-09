@@ -39,4 +39,9 @@ public enum MappingValidationErrorCode
     /// A mapping group specifies an unsupported target policy.
     /// </summary>
     InvalidPolicy,
+
+    /// <summary>
+    /// Enabled continuous mapping groups form a directed cycle.
+    /// </summary>
+    Cycle,
 }
