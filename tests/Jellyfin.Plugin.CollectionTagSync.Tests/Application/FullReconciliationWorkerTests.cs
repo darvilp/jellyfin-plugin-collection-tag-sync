@@ -4,6 +4,7 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Jellyfin.Plugin.CollectionTagSync.Application;
+using Jellyfin.Plugin.CollectionTagSync.Configuration;
 using Jellyfin.Plugin.CollectionTagSync.Domain;
 using Microsoft.Extensions.Logging.Abstractions;
 using Xunit;
@@ -12,6 +13,180 @@ namespace Jellyfin.Plugin.CollectionTagSync.Tests.Application;
 
 public sealed class FullReconciliationWorkerTests
 {
+    [Fact]
+    public async Task ExcessiveDestructivePlanPausesBeforeEveryWriteAndPersistsOnlyPreviewDiagnostics()
+    {
+        var itemIds = Enumerable.Range(0, 26)
+            .Select(index => Guid.Parse($"10000000-0000-0000-0000-{index + 1:D12}"))
+            .ToArray();
+        var configuration = CreateConfiguration();
+        var reader = new MutableStateReader(itemIds.Select(itemId => new ObservedItemState(
+            itemId,
+            EligibleItemKind.Movie,
+            ["Target", "Second Target"],
+            [])).ToArray());
+        var writer = new RecordingWriter(reader, Guid.Empty, expectedReadsBeforeFirstWrite: itemIds.Length)
+        {
+            FailedItemId = null,
+        };
+        var persistence = new RecordingConfigurationPersistence(new PluginConfiguration { Revision = 4 });
+        var statusStore = new FullReconcileStatusStore();
+        var requestStore = new FullReconcileRequestStore();
+        using var worker = new FullReconciliationWorker(
+            requestStore,
+            statusStore,
+            new FixedCatalog(itemIds),
+            new FixedConfigurationProvider(configuration),
+            new ItemReconciler(new FixedConfigurationProvider(configuration), reader, writer),
+            new ReconciliationExecutionGate(),
+            new RecordingIncrementalRecovery(),
+            new AlwaysQuietActivityMonitor(),
+            new FullReconcileSafetyService(persistence, TimeProvider.System),
+            NullLogger<FullReconciliationWorker>.Instance);
+        await worker.StartAsync(CancellationToken.None).ConfigureAwait(true);
+
+        var result = await requestStore
+            .RequestAsync(FullReconcileRequestReason.Manual, CancellationToken.None)
+            .WaitAsync(TimeSpan.FromSeconds(5))
+            .ConfigureAwait(true);
+        await worker.StopAsync(CancellationToken.None).ConfigureAwait(true);
+
+        Assert.Equal(FullReconcileState.AwaitingApproval, result.State);
+        Assert.Equal(0, writer.ApplyCount);
+        var preview = Assert.IsType<PausedFullReconcileConfiguration>(
+            persistence.Current.PausedFullReconcile);
+        Assert.Equal(result.Id, preview.RunId);
+        Assert.Equal(4, preview.ConfigurationRevision);
+        Assert.Equal(26, preview.UniqueAffectedItemCount);
+        Assert.Equal(52, preview.Removals.Length);
+        Assert.Equal(2, preview.Groups.Length);
+        Assert.Equal(26, preview.Items.Length);
+    }
+
+    [Fact]
+    public async Task MatchingConfirmationRecomputesThenExecutesTheFreshPlan()
+    {
+        var itemIds = Enumerable.Range(0, 26)
+            .Select(index => Guid.Parse($"20000000-0000-0000-0000-{index + 1:D12}"))
+            .ToArray();
+        var configuration = CreateConfiguration();
+        var reader = new MutableStateReader(itemIds.Select(itemId => new ObservedItemState(
+            itemId,
+            EligibleItemKind.Movie,
+            ["Target", "Second Target"],
+            [])).ToArray());
+        var writer = new RecordingWriter(reader, Guid.Empty, expectedReadsBeforeFirstWrite: itemIds.Length)
+        {
+            FailedItemId = null,
+        };
+        var persistence = new RecordingConfigurationPersistence(new PluginConfiguration { Revision = 8 });
+        var requests = new FullReconcileRequestStore();
+        var safety = new FullReconcileSafetyService(persistence, TimeProvider.System);
+        var approval = new FullReconcileApprovalService(requests, safety);
+        using var worker = new FullReconciliationWorker(
+            requests,
+            new FullReconcileStatusStore(),
+            new FixedCatalog(itemIds),
+            new FixedConfigurationProvider(configuration),
+            new ItemReconciler(new FixedConfigurationProvider(configuration), reader, writer),
+            new ReconciliationExecutionGate(),
+            new RecordingIncrementalRecovery(),
+            new AlwaysQuietActivityMonitor(),
+            safety,
+            NullLogger<FullReconciliationWorker>.Instance);
+        await worker.StartAsync(CancellationToken.None).ConfigureAwait(true);
+        var paused = await requests
+            .RequestAsync(FullReconcileRequestReason.Manual, CancellationToken.None)
+            .WaitAsync(TimeSpan.FromSeconds(5))
+            .ConfigureAwait(true);
+        var administratorId = new Guid("911a2579-e150-407c-a919-b5af378f34b5");
+        var authorization = Assert.IsType<FullReconcilePreviewAuthorization>(
+            safety.CreatePreviewAuthorization(paused.Id, administratorId));
+
+        var confirmed = await approval
+            .ConfirmAsync(
+                paused.Id,
+                administratorId,
+                authorization.Authorization,
+                CancellationToken.None)
+            .WaitAsync(TimeSpan.FromSeconds(5))
+            .ConfigureAwait(true);
+        await worker.StopAsync(CancellationToken.None).ConfigureAwait(true);
+
+        Assert.Equal(FullReconcileConfirmationOutcome.Accepted, confirmed.Outcome);
+        Assert.Equal(FullReconcileState.Completed, confirmed.RunResult?.State);
+        Assert.Equal(26, writer.ApplyCount);
+        Assert.Null(persistence.Current.PausedFullReconcile);
+    }
+
+    [Fact]
+    public async Task ChangedRemovalSetRejectsConfirmationWithoutWritesAndRequiresNewPreview()
+    {
+        var itemIds = Enumerable.Range(0, 26)
+            .Select(index => Guid.Parse($"30000000-0000-0000-0000-{index + 1:D12}"))
+            .ToArray();
+        var configuration = CreateConfiguration();
+        var reader = new MutableStateReader(itemIds.Select(itemId => new ObservedItemState(
+            itemId,
+            EligibleItemKind.Series,
+            ["Target", "Second Target"],
+            [])).ToArray());
+        var writer = new RecordingWriter(reader, Guid.Empty, expectedReadsBeforeFirstWrite: itemIds.Length)
+        {
+            FailedItemId = null,
+        };
+        var persistence = new RecordingConfigurationPersistence(new PluginConfiguration { Revision = 12 });
+        var requests = new FullReconcileRequestStore();
+        var safety = new FullReconcileSafetyService(persistence, TimeProvider.System);
+        var approval = new FullReconcileApprovalService(requests, safety);
+        using var worker = new FullReconciliationWorker(
+            requests,
+            new FullReconcileStatusStore(),
+            new FixedCatalog(itemIds),
+            new FixedConfigurationProvider(configuration),
+            new ItemReconciler(new FixedConfigurationProvider(configuration), reader, writer),
+            new ReconciliationExecutionGate(),
+            new RecordingIncrementalRecovery(),
+            new AlwaysQuietActivityMonitor(),
+            safety,
+            NullLogger<FullReconciliationWorker>.Instance);
+        await worker.StartAsync(CancellationToken.None).ConfigureAwait(true);
+        var paused = await requests
+            .RequestAsync(FullReconcileRequestReason.Manual, CancellationToken.None)
+            .WaitAsync(TimeSpan.FromSeconds(5))
+            .ConfigureAwait(true);
+        var administratorId = new Guid("43ed632d-0a38-42ec-8d00-240846cb1b7e");
+        var authorization = Assert.IsType<FullReconcilePreviewAuthorization>(
+            safety.CreatePreviewAuthorization(paused.Id, administratorId));
+        reader.RemoveTag(itemIds[0], "Target");
+
+        var confirmed = await approval
+            .ConfirmAsync(
+                paused.Id,
+                administratorId,
+                authorization.Authorization,
+                CancellationToken.None)
+            .WaitAsync(TimeSpan.FromSeconds(5))
+            .ConfigureAwait(true);
+        var reused = await approval
+            .ConfirmAsync(
+                paused.Id,
+                administratorId,
+                authorization.Authorization,
+                CancellationToken.None)
+            .ConfigureAwait(true);
+        await worker.StopAsync(CancellationToken.None).ConfigureAwait(true);
+
+        Assert.Equal(FullReconcileConfirmationOutcome.StalePreview, confirmed.Outcome);
+        Assert.Equal(FullReconcileState.AwaitingApproval, confirmed.RunResult?.State);
+        Assert.Equal(FullReconcileConfirmationOutcome.InvalidAuthorization, reused.Outcome);
+        Assert.Equal(0, writer.ApplyCount);
+        var replacement = Assert.IsType<PausedFullReconcileConfiguration>(
+            persistence.Current.PausedFullReconcile);
+        Assert.NotEqual(paused.Id, replacement.RunId);
+        Assert.Equal(51, replacement.Removals.Length);
+    }
+
     [Fact]
     public async Task FullReconcilePlansEveryItemBeforeWritingContinuesAfterFailureAndReleasesRepairs()
     {
@@ -48,6 +223,7 @@ public sealed class FullReconciliationWorkerTests
             new ReconciliationExecutionGate(),
             recovery,
             new AlwaysQuietActivityMonitor(),
+            CreateSafety(),
             NullLogger<FullReconciliationWorker>.Instance);
         await worker.StartAsync(CancellationToken.None).ConfigureAwait(true);
 
@@ -135,6 +311,7 @@ public sealed class FullReconciliationWorkerTests
             new ReconciliationExecutionGate(),
             recovery,
             activity,
+            CreateSafety(),
             NullLogger<FullReconciliationWorker>.Instance);
         var startup = requests.RequestAsync(FullReconcileRequestReason.Startup, CancellationToken.None);
         await worker.StartAsync(CancellationToken.None).ConfigureAwait(true);
@@ -181,6 +358,7 @@ public sealed class FullReconciliationWorkerTests
             new ReconciliationExecutionGate(),
             incremental,
             new AlwaysQuietActivityMonitor(),
+            CreateSafety(),
             NullLogger<FullReconciliationWorker>.Instance);
         await full.StartAsync(CancellationToken.None).ConfigureAwait(true);
 
@@ -219,6 +397,7 @@ public sealed class FullReconciliationWorkerTests
             new ReconciliationExecutionGate(),
             incremental,
             new AlwaysQuietActivityMonitor(),
+            CreateSafety(),
             NullLogger<FullReconciliationWorker>.Instance);
 
         await full.StartAsync(CancellationToken.None).ConfigureAwait(true);
@@ -254,6 +433,13 @@ public sealed class FullReconciliationWorkerTests
                     MappingPolicy.Authoritative,
                     isEnabled: true),
             ]).Configuration);
+    }
+
+    private static FullReconcileSafetyService CreateSafety()
+    {
+        return new FullReconcileSafetyService(
+            new RecordingConfigurationPersistence(new PluginConfiguration()),
+            TimeProvider.System);
     }
 
     private static FullReconcileRunResult Completed(FullReconcileRequest request)
@@ -373,8 +559,11 @@ public sealed class FullReconciliationWorkerTests
 
         public Guid? FailedItemId { get; set; }
 
+        public int ApplyCount { get; private set; }
+
         public Task ApplyAsync(ReconciliationPlan plan, CancellationToken cancellationToken)
         {
+            ApplyCount++;
             Assert.Equal(0, _reader.ReadCount % _expectedReadsBeforeFirstWrite);
             if (plan.ItemId == FailedItemId)
             {
@@ -395,6 +584,21 @@ public sealed class FullReconciliationWorkerTests
             }
 
             return Task.CompletedTask;
+        }
+    }
+
+    private sealed class RecordingConfigurationPersistence : IPluginConfigurationPersistence
+    {
+        public RecordingConfigurationPersistence(PluginConfiguration current)
+        {
+            Current = current;
+        }
+
+        public PluginConfiguration Current { get; private set; }
+
+        public void Save(PluginConfiguration configuration)
+        {
+            Current = configuration;
         }
     }
 

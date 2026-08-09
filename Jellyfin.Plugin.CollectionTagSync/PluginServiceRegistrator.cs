@@ -31,6 +31,8 @@ public sealed class PluginServiceRegistrator : IPluginServiceRegistrator
         serviceCollection.AddSingleton<IncrementalReconciliationOptions>();
         serviceCollection.AddSingleton<FullReconcileRequestStore>();
         serviceCollection.AddSingleton<FullReconcileStatusStore>();
+        serviceCollection.AddSingleton<FullReconcileSafetyService>();
+        serviceCollection.AddSingleton<FullReconcileApprovalService>();
         serviceCollection.AddSingleton<ReconciliationExecutionGate>();
         serviceCollection.AddSingleton(TimeProvider.System);
         serviceCollection.AddSingleton<IReconciliationDelay, SystemReconciliationDelay>();

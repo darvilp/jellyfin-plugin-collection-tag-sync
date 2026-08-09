@@ -17,6 +17,35 @@ public sealed class FullReconcileStatusStore
         failedItemCount: 0);
 
     /// <summary>
+    /// Initializes a new instance of the <see cref="FullReconcileStatusStore"/> class without persisted state.
+    /// </summary>
+    public FullReconcileStatusStore()
+    {
+    }
+
+    /// <summary>
+    /// Initializes a new instance of the <see cref="FullReconcileStatusStore"/> class from persisted diagnostics.
+    /// </summary>
+    /// <param name="persistence">The active plugin configuration persistence boundary.</param>
+    public FullReconcileStatusStore(IPluginConfigurationPersistence persistence)
+    {
+        ArgumentNullException.ThrowIfNull(persistence);
+        var paused = persistence.Current.PausedFullReconcile;
+        if (paused is null)
+        {
+            return;
+        }
+
+        _current = new FullReconcileRunResult(
+            paused.RunId,
+            FullReconcileState.AwaitingApproval,
+            paused.Reasons ?? [],
+            paused.TotalItemCount,
+            succeededItemCount: 0,
+            failedItemCount: 0);
+    }
+
+    /// <summary>
     /// Gets the current immutable status snapshot.
     /// </summary>
     public FullReconcileRunResult Current

@@ -13,6 +13,7 @@ public sealed class FullReconcileRequestStore
 {
     private readonly object _sync = new();
     private readonly HashSet<FullReconcileRequestReason> _reasons = [];
+    private readonly Queue<FullReconcileRequest> _pendingRequests = [];
     private readonly Channel<bool> _signals = Channel.CreateUnbounded<bool>(new UnboundedChannelOptions
     {
         SingleReader = true,
@@ -63,6 +64,25 @@ public sealed class FullReconcileRequestStore
     }
 
     /// <summary>
+    /// Enqueues one distinct freshly confirmed Full Reconcile request.
+    /// </summary>
+    /// <param name="confirmation">The consumed preview authorization.</param>
+    /// <param name="cancellationToken">Cancellation for this waiter only.</param>
+    /// <returns>The terminal fresh-run result.</returns>
+    internal Task<FullReconcileRunResult> RequestConfirmedAsync(
+        FullReconcileConfirmation confirmation,
+        CancellationToken cancellationToken)
+    {
+        lock (_sync)
+        {
+            var request = new FullReconcileRequest(confirmation);
+            _pendingRequests.Enqueue(request);
+            Signal();
+            return request.Completion.WaitAsync(cancellationToken);
+        }
+    }
+
+    /// <summary>
     /// Claims the current coalesced request for serialized execution.
     /// </summary>
     /// <param name="request">The claimed request.</param>
@@ -71,15 +91,20 @@ public sealed class FullReconcileRequestStore
     {
         lock (_sync)
         {
-            if (_pendingRequest is null)
+            if (_pendingRequests.Count == 0)
             {
                 request = null!;
                 return false;
             }
 
-            request = _pendingRequest.WithReasons(_reasons.Order());
-            _pendingRequest = null;
-            _reasons.Clear();
+            request = _pendingRequests.Dequeue();
+            if (ReferenceEquals(request, _pendingRequest))
+            {
+                request = request.WithReasons(_reasons.Order());
+                _pendingRequest = null;
+                _reasons.Clear();
+            }
+
             return true;
         }
     }
@@ -92,13 +117,19 @@ public sealed class FullReconcileRequestStore
             if (_pendingRequest is null)
             {
                 _pendingRequest = new FullReconcileRequest();
-                if (!_signals.Writer.TryWrite(true))
-                {
-                    throw new System.InvalidOperationException("The Full Reconcile dispatcher is unavailable.");
-                }
+                _pendingRequests.Enqueue(_pendingRequest);
+                Signal();
             }
 
             return _pendingRequest.Completion;
+        }
+    }
+
+    private void Signal()
+    {
+        if (!_signals.Writer.TryWrite(true))
+        {
+            throw new System.InvalidOperationException("The Full Reconcile dispatcher is unavailable.");
         }
     }
 }

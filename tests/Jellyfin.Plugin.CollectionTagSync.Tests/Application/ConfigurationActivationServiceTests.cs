@@ -373,6 +373,112 @@ public sealed class ConfigurationActivationServiceTests
         await worker.StopAsync(CancellationToken.None).ConfigureAwait(true);
     }
 
+    [Theory]
+    [InlineData(-1, 20, 10)]
+    [InlineData(25, -1, 10)]
+    [InlineData(25, 101, 10)]
+    [InlineData(25, 20, 0)]
+    [InlineData(25, 20, 9)]
+    public async Task InvalidDestructiveLimitsDoNotReplaceActiveConfiguration(
+        int maximumItems,
+        int maximumPercentage,
+        int populationFloor)
+    {
+        var persistence = new RecordingConfigurationPersistence(new PluginConfiguration { Revision = 5 });
+        using var service = CreateService(
+            persistence,
+            new FixedCatalog([], []),
+            new FixedStateReader(),
+            new BackgroundReconciliationStatusStore());
+        var candidate = new PluginConfiguration
+        {
+            DestructiveMaximumAffectedItems = maximumItems,
+            DestructiveMaximumRemovalPercentage = maximumPercentage,
+            DestructiveMinimumAssignmentPopulation = populationFloor,
+        };
+
+        var result = await service.ActivateAsync(candidate, CancellationToken.None).ConfigureAwait(true);
+
+        Assert.Equal(ConfigurationActivationOutcome.Invalid, result.Outcome);
+        Assert.Equal(0, persistence.SaveCount);
+        Assert.Equal(5, persistence.Current.Revision);
+    }
+
+    [Fact]
+    public async Task DisablingCircuitBreakerRequiresAcknowledgmentAndPersistsAcceptedLimits()
+    {
+        var persistence = new RecordingConfigurationPersistence(new PluginConfiguration { Revision = 5 });
+        using var service = CreateService(
+            persistence,
+            new FixedCatalog([], []),
+            new FixedStateReader(),
+            new BackgroundReconciliationStatusStore());
+        var unacknowledged = new PluginConfiguration
+        {
+            DestructiveCircuitBreakerEnabled = false,
+        };
+
+        var rejected = await service
+            .ActivateAsync(unacknowledged, CancellationToken.None)
+            .ConfigureAwait(true);
+
+        Assert.Equal(ConfigurationActivationOutcome.Invalid, rejected.Outcome);
+        Assert.Equal(0, persistence.SaveCount);
+
+        unacknowledged.DestructiveCircuitBreakerDisableAcknowledged = true;
+        unacknowledged.DestructiveMaximumAffectedItems = 5;
+        unacknowledged.DestructiveMaximumRemovalPercentage = 35;
+        unacknowledged.DestructiveMinimumAssignmentPopulation = 20;
+        var accepted = await service
+            .ActivateAsync(unacknowledged, CancellationToken.None)
+            .ConfigureAwait(true);
+
+        Assert.Equal(ConfigurationActivationOutcome.Accepted, accepted.Outcome);
+        Assert.False(persistence.Current.DestructiveCircuitBreakerEnabled);
+        Assert.True(persistence.Current.DestructiveCircuitBreakerDisableAcknowledged);
+        Assert.Equal(5, persistence.Current.DestructiveMaximumAffectedItems);
+        Assert.Equal(35, persistence.Current.DestructiveMaximumRemovalPercentage);
+        Assert.Equal(20, persistence.Current.DestructiveMinimumAssignmentPopulation);
+
+        var whileDisabled = new PluginConfiguration
+        {
+            DestructiveCircuitBreakerEnabled = false,
+            DestructiveMaximumAffectedItems = 6,
+            DestructiveMaximumRemovalPercentage = 40,
+            DestructiveMinimumAssignmentPopulation = 25,
+        };
+        var updatedWhileDisabled = await service
+            .ActivateAsync(whileDisabled, CancellationToken.None)
+            .ConfigureAwait(true);
+
+        Assert.Equal(ConfigurationActivationOutcome.Accepted, updatedWhileDisabled.Outcome);
+        Assert.True(persistence.Current.DestructiveCircuitBreakerDisableAcknowledged);
+
+        var reenabled = new PluginConfiguration
+        {
+            DestructiveCircuitBreakerEnabled = true,
+            DestructiveCircuitBreakerDisableAcknowledged = true,
+        };
+        var reenabledResult = await service
+            .ActivateAsync(reenabled, CancellationToken.None)
+            .ConfigureAwait(true);
+
+        Assert.Equal(ConfigurationActivationOutcome.Accepted, reenabledResult.Outcome);
+        Assert.True(persistence.Current.DestructiveCircuitBreakerEnabled);
+        Assert.False(persistence.Current.DestructiveCircuitBreakerDisableAcknowledged);
+
+        var unacknowledgedSecondDisable = new PluginConfiguration
+        {
+            DestructiveCircuitBreakerEnabled = false,
+        };
+        var secondDisable = await service
+            .ActivateAsync(unacknowledgedSecondDisable, CancellationToken.None)
+            .ConfigureAwait(true);
+
+        Assert.Equal(ConfigurationActivationOutcome.Invalid, secondDisable.Outcome);
+        Assert.True(persistence.Current.DestructiveCircuitBreakerEnabled);
+    }
+
     private static ConfigurationActivationService CreateService(
         RecordingConfigurationPersistence persistence,
         FixedCatalog catalog,
