@@ -2,6 +2,7 @@ using System;
 using Jellyfin.Plugin.CollectionTagSync.Configuration;
 using MediaBrowser.Common.Configuration;
 using MediaBrowser.Common.Plugins;
+using MediaBrowser.Model.Plugins;
 using MediaBrowser.Model.Serialization;
 
 namespace Jellyfin.Plugin.CollectionTagSync;
@@ -36,4 +37,22 @@ public sealed class Plugin : BasePlugin<PluginConfiguration>
 
     /// <inheritdoc />
     public override Guid Id => new("04920eee-c499-4b13-890f-7af0175f28f0");
+
+    /// <inheritdoc />
+    public override void UpdateConfiguration(BasePluginConfiguration configuration)
+    {
+        throw new InvalidOperationException(
+            "Collection Tag Sync configuration must use the validated activation endpoint.");
+    }
+
+    /// <summary>
+    /// Persists and activates one server-validated configuration.
+    /// </summary>
+    /// <param name="configuration">The validated configuration.</param>
+    internal void ActivateValidatedConfiguration(PluginConfiguration configuration)
+    {
+        SaveConfiguration(configuration);
+        Configuration = configuration;
+        ConfigurationChanged?.Invoke(this, configuration);
+    }
 }

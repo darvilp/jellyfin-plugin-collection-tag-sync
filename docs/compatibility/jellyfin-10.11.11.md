@@ -2,7 +2,7 @@
 
 **Validated:** 2026-08-09
 
-**Scope:** Phase 1 integration spike through Phase 4B incremental coordination
+**Scope:** Phase 1 integration spike through Phase 4C configuration activation
 
 ## Pinned compatibility set
 
@@ -45,8 +45,9 @@ not used.
 - A collection created as a distinct API action survived restart without any
   active mapping. This supports the accepted rule that creation is not rolled
   back when a later mapping or run-once workflow is canceled or fails.
-- `PluginConfiguration.SchemaVersion` serialized through Jellyfin's plugin
-  configuration API and retained its value through restart.
+- `PluginConfiguration.SchemaVersion` and the server-assigned active revision
+  serialized through Jellyfin's plugin configuration API and retained their
+  values through restart.
 - Jellyfin loaded the package through a temporary custom JPRM manifest, then
   restarted healthy with the plugin Active. The test restored the original
   Jellyfin repository list afterward.
@@ -76,6 +77,18 @@ not used.
   and quarantines it from later incremental events until Full Reconcile resets
   recovery state. Privacy-safe status snapshots expose only queued, running,
   and quarantined counts plus storm state, never item or library identities.
+- The custom configuration activation and status endpoints required Jellyfin
+  administrator elevation, and the generic plugin-configuration mutation route
+  was rejected so it could not bypass server validation or revision assignment.
+  A valid addition-only candidate returned HTTP 202 with revision and request
+  identities before settlement, reconciled in the background, and remained
+  active after restart. A cyclic candidate returned HTTP 400 without changing
+  the active revision; an Authoritative removal-bearing candidate returned HTTP
+  409 with paused status and was not saved.
+- Concurrent accepted requests retain their own immutable revision snapshots,
+  re-resolve collection availability fail closed at execution time, and yield
+  the shared mutation boundary between items so a later save does not wait for
+  the prior request's complete metadata settlement.
 
 The package verifier confirmed that the ZIP contains exactly the plugin DLL
 and JPRM `meta.json`, with version `0.1.0.0`, the permanent GUID, and target ABI
@@ -95,19 +108,24 @@ bash scripts/test-event-observation.sh
 bash scripts/test-jellyfin-contracts.sh
 bash scripts/test-walking-slice.sh
 bash scripts/test-continuous-adapters.sh
+bash scripts/test-configuration-activation.sh
 bash scripts/test-manifest-install.sh
 ```
 
 Validated results:
 
 - build: zero warnings and zero errors;
-- tests: 56 passed, 0 failed;
+- tests: 76 passed, 0 failed;
 - event observation: all four subscribed event types observed;
 - persistence/API contract: passed across two restarts;
 - walking slice: Movie and Series added once each, then settled at zero delta;
 - continuous adapters: both directions, both policies, Movie/Series scope, and
   fail-closed missing-collection behavior passed through the hardened
   coordinator;
+- configuration activation: elevation-only HTTP access, server-assigned
+  revision, authoritative-route enforcement, asynchronous settlement,
+  invalid-candidate preservation, destructive pause, and restart persistence
+  passed;
 - manual package install: passed;
 - temporary-manifest catalog install: passed.
 
@@ -118,8 +136,9 @@ Validated results:
   Phase 4A extends that proof to direct tag writes, collection removals, and
   fail-closed missing references. Phase 4B contains incremental failures and
   produces the bounded event-storm request; issue #10 must consume that request
-  through Full Reconcile. Full-library recovery and configuration activation
-  status remain later phases.
+  through Full Reconcile. Phase 4C activates removal-free configurations and
+  exposes background status; destructive confirmation remains reserved for the
+  later preview/authorization phase.
 - The create endpoint's independent persistence was proven. Cancellation and
   save-failure behavior around the future application workflow remains an
   application-level test for the run-once/configuration phase.

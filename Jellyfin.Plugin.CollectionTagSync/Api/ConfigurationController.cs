@@ -1,0 +1,74 @@
+using System;
+using System.Threading;
+using System.Threading.Tasks;
+using Jellyfin.Plugin.CollectionTagSync.Application;
+using Jellyfin.Plugin.CollectionTagSync.Configuration;
+using MediaBrowser.Common.Api;
+using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Mvc;
+
+namespace Jellyfin.Plugin.CollectionTagSync.Api;
+
+/// <summary>
+/// Provides administrator-only continuous configuration activation and status APIs.
+/// </summary>
+[ApiController]
+[Authorize(Policy = Policies.RequiresElevation)]
+[Route("CollectionTagSync/Configuration")]
+public sealed class ConfigurationController : ControllerBase
+{
+    private readonly ConfigurationActivationService _activationService;
+    private readonly BackgroundReconciliationStatusStore _statusStore;
+
+    /// <summary>
+    /// Initializes a new instance of the <see cref="ConfigurationController"/> class.
+    /// </summary>
+    /// <param name="activationService">The configuration activation service.</param>
+    /// <param name="statusStore">The background reconciliation status store.</param>
+    public ConfigurationController(
+        ConfigurationActivationService activationService,
+        BackgroundReconciliationStatusStore statusStore)
+    {
+        _activationService = activationService;
+        _statusStore = statusStore;
+    }
+
+    /// <summary>
+    /// Validates and activates one complete ordinary configuration candidate.
+    /// </summary>
+    /// <param name="candidate">The complete candidate.</param>
+    /// <param name="cancellationToken">The cancellation token.</param>
+    /// <returns>An accepted, validation, or preview-required result.</returns>
+    [HttpPost]
+    [ProducesResponseType<ConfigurationActivationResult>(StatusCodes.Status202Accepted)]
+    [ProducesResponseType<ConfigurationActivationResult>(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType<ConfigurationActivationResult>(StatusCodes.Status409Conflict)]
+    public async Task<ActionResult<ConfigurationActivationResult>> ActivateAsync(
+        [FromBody] PluginConfiguration candidate,
+        CancellationToken cancellationToken)
+    {
+        var result = await _activationService.ActivateAsync(candidate, cancellationToken).ConfigureAwait(false);
+        return result.Outcome switch
+        {
+            ConfigurationActivationOutcome.Accepted => Accepted(result),
+            ConfigurationActivationOutcome.Invalid => BadRequest(result),
+            ConfigurationActivationOutcome.RequiresPreview => Conflict(result),
+            _ => throw new InvalidOperationException("Unknown configuration activation outcome."),
+        };
+    }
+
+    /// <summary>
+    /// Gets privacy-safe background reconciliation status.
+    /// </summary>
+    /// <param name="id">The opaque reconciliation identity.</param>
+    /// <returns>The status or not found.</returns>
+    [HttpGet("Reconciliations/{id:guid}")]
+    [ProducesResponseType<BackgroundReconciliationStatus>(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public ActionResult<BackgroundReconciliationStatus> GetReconciliationStatus(Guid id)
+    {
+        var status = _statusStore.Get(id);
+        return status is null ? NotFound() : Ok(status);
+    }
+}

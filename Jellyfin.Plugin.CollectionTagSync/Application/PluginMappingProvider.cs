@@ -12,7 +12,7 @@ namespace Jellyfin.Plugin.CollectionTagSync.Application;
 /// <summary>
 /// Provides the validated, fail-closed operational graph from plugin configuration.
 /// </summary>
-internal sealed partial class PluginMappingProvider : IActiveMappingProvider
+internal sealed partial class PluginMappingProvider : IActiveMappingProvider, IOperationalMappingProvider
 {
     private readonly ILibraryManager _libraryManager;
     private readonly MappingDiagnosticStore _diagnosticStore;
@@ -44,14 +44,20 @@ internal sealed partial class PluginMappingProvider : IActiveMappingProvider
             return null;
         }
 
-        var availableCollectionIds = validated.Groups
+        return Resolve(validated);
+    }
+
+    /// <inheritdoc />
+    public MappingConfiguration Resolve(MappingConfiguration configuration)
+    {
+        var availableCollectionIds = configuration.Groups
             .Where(group => group.IsEnabled)
             .SelectMany(group => group.Sources.Append(group.Target))
             .OfType<CollectionNode>()
             .Distinct()
             .Where(collection => _libraryManager.GetItemById(collection.Id) is BoxSet)
             .Select(collection => collection.Id);
-        var operational = OperationalMappingResolver.Resolve(validated, availableCollectionIds);
+        var operational = OperationalMappingResolver.Resolve(configuration, availableCollectionIds);
         UpdateDiagnostics(operational.UnresolvedGroups);
         return operational.Configuration;
     }

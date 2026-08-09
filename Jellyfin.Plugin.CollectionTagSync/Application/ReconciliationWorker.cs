@@ -12,7 +12,7 @@ namespace Jellyfin.Plugin.CollectionTagSync.Application;
 /// <summary>
 /// Deduplicates dirty items and serializes their reconciliation.
 /// </summary>
-public sealed partial class ReconciliationWorker : BackgroundService, IDirtyItemSink, IIncrementalReconciliationControl
+public sealed partial class ReconciliationWorker : BackgroundService, IDirtyItemSink, IIncrementalReconciliationControl, IFailedItemQuarantine
 {
     private readonly object _sync = new();
     private readonly Channel<Guid> _queue = Channel.CreateUnbounded<Guid>(new UnboundedChannelOptions
@@ -28,6 +28,7 @@ public sealed partial class ReconciliationWorker : BackgroundService, IDirtyItem
     private readonly ItemReconciler _reconciler;
     private readonly IncrementalReconciliationOptions _options;
     private readonly FullReconcileRequestStore _fullReconcileRequests;
+    private readonly ReconciliationExecutionGate _executionGate;
     private readonly ILogger<ReconciliationWorker> _logger;
     private bool _stormFallbackActive;
 
@@ -43,10 +44,34 @@ public sealed partial class ReconciliationWorker : BackgroundService, IDirtyItem
         IncrementalReconciliationOptions options,
         FullReconcileRequestStore fullReconcileRequests,
         ILogger<ReconciliationWorker> logger)
+        : this(
+            reconciler,
+            options,
+            fullReconcileRequests,
+            new ReconciliationExecutionGate(),
+            logger)
+    {
+    }
+
+    /// <summary>
+    /// Initializes a new instance of the <see cref="ReconciliationWorker"/> class.
+    /// </summary>
+    /// <param name="reconciler">The per-item reconciler.</param>
+    /// <param name="options">The bounded incremental options.</param>
+    /// <param name="fullReconcileRequests">The coalesced Full Reconcile request store.</param>
+    /// <param name="executionGate">The shared mutation serialization boundary.</param>
+    /// <param name="logger">The logger.</param>
+    public ReconciliationWorker(
+        ItemReconciler reconciler,
+        IncrementalReconciliationOptions options,
+        FullReconcileRequestStore fullReconcileRequests,
+        ReconciliationExecutionGate executionGate,
+        ILogger<ReconciliationWorker> logger)
     {
         _reconciler = reconciler;
         _options = options;
         _fullReconcileRequests = fullReconcileRequests;
+        _executionGate = executionGate;
         _logger = logger;
     }
 
@@ -114,6 +139,12 @@ public sealed partial class ReconciliationWorker : BackgroundService, IDirtyItem
     }
 
     /// <inheritdoc />
+    void IFailedItemQuarantine.Quarantine(Guid itemId)
+    {
+        QuarantineItem(itemId);
+    }
+
+    /// <inheritdoc />
     [SuppressMessage(
         "Design",
         "CA1031:Do not catch general exception types",
@@ -123,8 +154,11 @@ public sealed partial class ReconciliationWorker : BackgroundService, IDirtyItem
         await foreach (var itemId in _queue.Reader.ReadAllAsync(stoppingToken).ConfigureAwait(false))
         {
             BeginItem(itemId);
+            var gateEntered = false;
             try
             {
+                await _executionGate.EnterAsync(stoppingToken).ConfigureAwait(false);
+                gateEntered = true;
                 var plan = await _reconciler.ReconcileAsync(itemId, stoppingToken).ConfigureAwait(false);
                 if (plan is null)
                 {
@@ -151,6 +185,11 @@ public sealed partial class ReconciliationWorker : BackgroundService, IDirtyItem
             }
             finally
             {
+                if (gateEntered)
+                {
+                    _executionGate.Exit();
+                }
+
                 FinishItem(itemId);
             }
         }

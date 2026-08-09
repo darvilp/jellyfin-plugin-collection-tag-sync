@@ -11,6 +11,7 @@ public sealed class PluginConfigurationContractTests
         var configuration = new PluginConfiguration();
 
         Assert.Equal(1, configuration.SchemaVersion);
+        Assert.Equal(0, configuration.Revision);
     }
 
     [Fact]

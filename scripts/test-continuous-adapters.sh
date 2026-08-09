@@ -7,6 +7,7 @@ project_root="$(cd -- "${script_dir}/.." && pwd)"
 server_url="http://127.0.0.1:18096"
 token_file="${project_root}/.testenv/jellyfin/access-token"
 plugin_id="04920eee-c499-4b13-890f-7af0175f28f0"
+activation_url="${server_url}/CollectionTagSync/Configuration"
 
 if [[ ! -f "${token_file}" ]]; then
     printf 'Missing test-server token. Run scripts/configure-test-server.sh first.\n' >&2
@@ -17,7 +18,6 @@ access_token="$(<"${token_file}")"
 source_tag="Adapter-Source-$(date -u +'%Y%m%d%H%M%S%N')"
 target_tag="Adapter-Target-$(date -u +'%Y%m%d%H%M%S%N')"
 preserved_tag="Adapter-Preserved-$(date -u +'%Y%m%d%H%M%S%N')"
-missing_collection_id="00000000-0000-0000-0000-000000007777"
 movie_id=''
 series_id=''
 movie_original_tags=''
@@ -38,7 +38,29 @@ api_post_json() {
 }
 
 set_configuration() {
-    api_post_json "${server_url}/Plugins/${plugin_id}/Configuration" "$1"
+    local response
+    local request_id
+    local state=''
+    response="$(api_post_json "${activation_url}" "$1")"
+    request_id="$(jq --raw-output '.ReconciliationId // .reconciliationId' <<<"${response}")"
+    for _ in {1..30}; do
+        state="$(api_get "${activation_url}/Reconciliations/${request_id}" \
+            | jq --raw-output '.State // .state')"
+        if [[ "${state}" == "2" || "${state}" == "Completed" ]]; then
+            return
+        fi
+
+        if [[ "${state}" == "3" || "${state}" == "4" \
+            || "${state}" == "PartiallyFailed" || "${state}" == "Failed" ]]; then
+            break
+        fi
+
+        sleep 1
+    done
+
+    printf 'Configuration activation %s ended in unexpected state %s.\n' \
+        "${request_id}" "${state}" >&2
+    return 1
 }
 
 create_collection() {
@@ -199,6 +221,7 @@ source_collection_id="$(create_collection "Adapter Source $(date -u +'%Y%m%d%H%M
 target_collection_id="$(create_collection "Adapter Target $(date -u +'%Y%m%d%H%M%S%N')")"
 movie_guid="$(format_guid "${movie_id}")"
 series_guid="$(format_guid "${series_id}")"
+source_collection_guid="$(format_guid "${source_collection_id}")"
 
 additive_configuration="$(jq --null-input \
     --arg source_tag "${source_tag}" \
@@ -249,10 +272,9 @@ wait_for_tag_state "${series_id}" "${target_tag}" false
 wait_for_log_counts 2 2 2 2
 
 movie_preserved_tags="$(jq --arg tag "${preserved_tag}" '. + [$tag] | unique' <<<"${movie_original_tags}")"
-set_item_tags "${movie_id}" "${movie_preserved_tags}"
 unresolved_configuration="$(jq --null-input \
     --arg preserved_tag "${preserved_tag}" \
-    --arg missing_collection_id "${missing_collection_id}" \
+    --arg source_collection_id "${source_collection_id}" \
     --arg target_collection_id "${target_collection_id}" \
     '{
         SchemaVersion: 1,
@@ -260,7 +282,7 @@ unresolved_configuration="$(jq --null-input \
             {
                 Target: {Kind: 0, TagValue: $preserved_tag},
                 Sources: [
-                    {Kind: 1, CollectionId: $missing_collection_id, CollectionDisplayName: "Missing"},
+                    {Kind: 1, CollectionId: $source_collection_id, CollectionDisplayName: "Adapter Source"},
                     {Kind: 0, TagValue: "Also absent"}
                 ],
                 Policy: 1,
@@ -275,6 +297,9 @@ unresolved_configuration="$(jq --null-input \
         ]
     }')"
 set_configuration "${unresolved_configuration}"
+curl --fail --silent --request DELETE \
+    --header "X-Emby-Token: ${access_token}" \
+    "${server_url}/Items/${source_collection_id}"
 set_item_tags "${movie_id}" "${movie_preserved_tags}"
 set_item_tags "${movie_id}" "${movie_preserved_tags}"
 
@@ -284,10 +309,10 @@ wait_for_log_counts 3 2 3 2
 refresh_logs
 unresolved_count="$(count_log_lines 'mapping group unresolved GroupIndex=0')"
 if [[ "${unresolved_count}" -ne 1 ]] \
-    || ! rg --ignore-case --fixed-strings "MissingCollectionIds=${missing_collection_id}" \
+    || ! rg --ignore-case --fixed-strings "MissingCollectionIds=${source_collection_guid}" \
         <<<"${event_log}" >/dev/null; then
     printf 'Expected one persistent unresolved-group warning for %s; found %s.\n' \
-        "${missing_collection_id}" \
+        "${source_collection_guid}" \
         "${unresolved_count}" >&2
     exit 6
 fi

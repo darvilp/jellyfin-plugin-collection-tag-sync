@@ -14,20 +14,33 @@ public sealed class PluginServiceRegistrator : IPluginServiceRegistrator
     public void RegisterServices(IServiceCollection serviceCollection, IServerApplicationHost applicationHost)
     {
         serviceCollection.AddSingleton<MappingDiagnosticStore>();
-        serviceCollection.AddSingleton<IActiveMappingProvider, PluginMappingProvider>();
+        serviceCollection.AddSingleton<PluginMappingProvider>();
+        serviceCollection.AddSingleton<IActiveMappingProvider>(
+            serviceProvider => serviceProvider.GetRequiredService<PluginMappingProvider>());
+        serviceCollection.AddSingleton<IOperationalMappingProvider>(
+            serviceProvider => serviceProvider.GetRequiredService<PluginMappingProvider>());
         serviceCollection.AddSingleton<IItemStateReader, JellyfinItemStateReader>();
         serviceCollection.AddSingleton<IPlanWriter, JellyfinPlanWriter>();
+        serviceCollection.AddSingleton<IPluginConfigurationPersistence, PluginConfigurationPersistence>();
+        serviceCollection.AddSingleton<IConfigurationCatalog, JellyfinConfigurationCatalog>();
+        serviceCollection.AddSingleton<BackgroundReconciliationStatusStore>();
+        serviceCollection.AddSingleton<ConfigurationReconciliationDispatcher>();
+        serviceCollection.AddSingleton<ConfigurationActivationService>();
         serviceCollection.AddSingleton<ItemReconciler>();
         serviceCollection.AddSingleton<IncrementalReconciliationOptions>();
         serviceCollection.AddSingleton<FullReconcileRequestStore>();
+        serviceCollection.AddSingleton<ReconciliationExecutionGate>();
         serviceCollection.AddHostedService<MappingDiagnosticInitializer>();
         serviceCollection.AddSingleton<ReconciliationWorker>();
         serviceCollection.AddSingleton<IDirtyItemSink>(
             serviceProvider => serviceProvider.GetRequiredService<ReconciliationWorker>());
         serviceCollection.AddSingleton<IIncrementalReconciliationControl>(
             serviceProvider => serviceProvider.GetRequiredService<ReconciliationWorker>());
+        serviceCollection.AddSingleton<IFailedItemQuarantine>(
+            serviceProvider => serviceProvider.GetRequiredService<ReconciliationWorker>());
         serviceCollection.AddHostedService(
             serviceProvider => serviceProvider.GetRequiredService<ReconciliationWorker>());
+        serviceCollection.AddHostedService<ConfigurationReconciliationWorker>();
         serviceCollection.AddHostedService<JellyfinEventObserver>();
     }
 }

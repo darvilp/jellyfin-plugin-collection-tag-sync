@@ -6,7 +6,7 @@ script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 project_root="$(cd -- "${script_dir}/.." && pwd)"
 server_url="http://127.0.0.1:18096"
 token_file="${project_root}/.testenv/jellyfin/access-token"
-plugin_id="04920eee-c499-4b13-890f-7af0175f28f0"
+activation_url="${server_url}/CollectionTagSync/Configuration"
 
 if [[ ! -f "${token_file}" ]]; then
     printf 'Missing test-server token. Run scripts/configure-test-server.sh first.\n' >&2
@@ -33,11 +33,35 @@ api_post_json() {
         "$1"
 }
 
+set_configuration() {
+    local response
+    local request_id
+    local state=''
+    response="$(api_post_json "${activation_url}" "$1")"
+    request_id="$(jq --raw-output '.ReconciliationId // .reconciliationId' <<<"${response}")"
+    for _ in {1..30}; do
+        state="$(api_get "${activation_url}/Reconciliations/${request_id}" \
+            | jq --raw-output '.State // .state')"
+        if [[ "${state}" == "2" || "${state}" == "Completed" ]]; then
+            return
+        fi
+
+        if [[ "${state}" == "3" || "${state}" == "4" \
+            || "${state}" == "PartiallyFailed" || "${state}" == "Failed" ]]; then
+            break
+        fi
+
+        sleep 1
+    done
+
+    printf 'Configuration activation %s ended in unexpected state %s.\n' \
+        "${request_id}" "${state}" >&2
+    return 1
+}
+
 restore_test_state() {
     set +e
-    api_post_json \
-        "${server_url}/Plugins/${plugin_id}/Configuration" \
-        '{"SchemaVersion":1,"MappingGroups":[]}' >/dev/null
+    set_configuration '{"SchemaVersion":1,"MappingGroups":[]}' >/dev/null
 
     if [[ -n "${movie_id}" && -n "${movie_original_tags}" ]]; then
         current_movie="$(api_get "${server_url}/Items/${movie_id}")"
@@ -83,8 +107,7 @@ collection="$(curl --fail --silent --get --request POST \
     "${server_url}/Collections")"
 collection_id="$(jq --raw-output .Id <<<"${collection}")"
 
-api_post_json \
-    "${server_url}/Plugins/${plugin_id}/Configuration" \
+set_configuration \
     "$(jq --null-input \
         --arg source_tag "${source_tag}" \
         --arg collection_id "${collection_id}" \
