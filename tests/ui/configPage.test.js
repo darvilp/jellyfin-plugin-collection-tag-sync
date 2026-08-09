@@ -29,8 +29,20 @@ class FakeElement {
         this.closestValues = closest;
         this.classList = new FakeClassList();
         this.hidden = false;
+        this.open = false;
         this.innerHTML = '';
         this.textContent = '';
+        this.listeners = new Map();
+    }
+
+    addEventListener(type, listener) {
+        this.listeners.set(type, listener);
+    }
+
+    async dispatch(type, details = {}) {
+        const listener = this.listeners.get(type);
+        assert.ok(listener, `Expected a ${type} listener.`);
+        await listener({ target: this, preventDefault() {}, ...details });
     }
 
     matches(selector) {
@@ -47,6 +59,14 @@ class FakeElement {
 
     focus() {
         this.focused = true;
+    }
+
+    showModal() {
+        this.open = true;
+    }
+
+    close() {
+        this.open = false;
     }
 
     querySelectorAll() {
@@ -135,10 +155,10 @@ class FakeView {
         return [];
     }
 
-    async dispatch(type, target = new FakeElement()) {
+    async dispatch(type, target = new FakeElement(), details = {}) {
         const listener = this.listeners.get(type);
         assert.ok(listener, `Expected a ${type} listener.`);
-        await listener({ target });
+        await listener({ target, preventDefault() {}, ...details });
     }
 }
 
@@ -152,6 +172,16 @@ function exclusion(itemId, checked) {
         dataset: { runOnceExclusion: itemId },
         selectors: ['[data-run-once-exclusion]'],
         closest: { '#collectionTagSyncRunOnce': {} }
+    });
+}
+
+function collectionPicker(value = directItemId) {
+    const editor = new FakeElement({ dataset: { collectionDisplayName: 'Animation' } });
+    return new FakeElement({
+        value: '__add_new_collection__',
+        dataset: { previousValue: value },
+        selectors: ['[data-field="collection-id"]'],
+        closest: { '[data-node-editor]': editor }
     });
 }
 
@@ -274,6 +304,130 @@ test('fresh collection nodes render the empty picker prompt instead of an unreso
     const rendered = view.querySelector('#collectionTagSyncMappingGroups').innerHTML;
     assert.match(rendered, /<option value="">Select a collection…<\/option>/);
     assert.doesNotMatch(rendered, new RegExp(`Missing collection.*${emptyGuid}`));
+});
+
+test('collection creation is a native modal associated with the originating picker', async () => {
+    const html = await readFile(new URL(
+        '../../Jellyfin.Plugin.CollectionTagSync/Configuration/configPage.html',
+        import.meta.url), 'utf8');
+
+    assert.match(html, /<dialog[^>]+id="collectionTagSyncCreateCollection"/);
+    assert.match(html, /aria-modal="true"/);
+    assert.match(html, /aria-describedby="collectionTagSyncCreateCollectionDescription"/);
+    assert.match(html, /selected in the picker you opened this from/i);
+    assert.match(html, /\.collectionTagSyncDialog::backdrop/);
+    assert.doesNotMatch(html, /<section[^>]+id="collectionTagSyncCreateCollection"/);
+});
+
+test('canceling collection modal returns focus to the originating picker', async () => {
+    const { view } = createHarness();
+    const picker = collectionPicker();
+
+    await view.dispatch('change', picker);
+
+    assert.equal(view.querySelector('#collectionTagSyncCreateCollection').open, true);
+    assert.equal(view.querySelector('#collectionTagSyncNewCollectionName').focused, true);
+    await view.dispatch('click', button('cancel-create-collection'));
+    assert.equal(view.querySelector('#collectionTagSyncCreateCollection').open, false);
+    assert.equal(picker.focused, true);
+});
+
+test('native dialog cancellation closes the modal and returns focus to its picker', async () => {
+    const { view } = createHarness();
+    const picker = collectionPicker();
+    await view.dispatch('change', picker);
+    let prevented = false;
+
+    await view.querySelector('#collectionTagSyncCreateCollection').dispatch('cancel', {
+        preventDefault() {
+            prevented = true;
+        }
+    });
+
+    assert.equal(prevented, true);
+    assert.equal(view.querySelector('#collectionTagSyncCreateCollection').open, false);
+    assert.equal(picker.focused, true);
+});
+
+test('created collection is selected by GUID before modal focus returns', async () => {
+    const picker = collectionPicker();
+    const { calls, view } = createHarness(async path => {
+        if (path === 'CollectionTagSync/Collections/Create') {
+            return {
+                Outcome: 'Created',
+                SelectedCollection: { Id: cascadeItemId, DisplayName: 'Waltney Picks' }
+            };
+        }
+
+        return {};
+    });
+    await view.dispatch('change', picker);
+    view.querySelector('#collectionTagSyncNewCollectionName').value = 'Waltney Picks';
+
+    await view.dispatch('click', button('create-collection'));
+
+    const request = calls.find(call => call.path === 'CollectionTagSync/Collections/Create');
+    assert.deepEqual(request.body, { Name: 'Waltney Picks' });
+    assert.equal(picker.value, cascadeItemId);
+    assert.equal(picker.closest('[data-node-editor]').dataset.collectionDisplayName, 'Waltney Picks');
+    assert.equal(view.querySelector('#collectionTagSyncCreateCollection').open, false);
+    assert.equal(picker.focused, true);
+});
+
+test('late collection creation cannot act on a reopened modal or duplicate its request', async () => {
+    const firstCreatedId = '33333333-3333-3333-3333-333333333333';
+    const secondCreatedId = '44444444-4444-4444-4444-444444444444';
+    let finishFirst;
+    let finishSecond;
+    const firstResponse = new Promise(resolve => {
+        finishFirst = resolve;
+    });
+    const secondResponse = new Promise(resolve => {
+        finishSecond = resolve;
+    });
+    let createCalls = 0;
+    const { calls, view } = createHarness(async path => {
+        if (path !== 'CollectionTagSync/Collections/Create') {
+            return {};
+        }
+
+        createCalls += 1;
+        return createCalls === 1 ? firstResponse : secondResponse;
+    });
+    const firstPicker = collectionPicker();
+    const secondPicker = collectionPicker(cascadeItemId);
+
+    await view.dispatch('change', firstPicker);
+    view.querySelector('#collectionTagSyncNewCollectionName').value = 'First collection';
+    const firstRequest = view.dispatch('click', button('create-collection'));
+    await Promise.resolve();
+    assert.equal(view.querySelector('[data-action="create-collection"]').disabled, true);
+    await view.dispatch('click', button('create-collection'));
+    assert.equal(calls.filter(call => call.path === 'CollectionTagSync/Collections/Create').length, 1);
+
+    await view.dispatch('click', button('cancel-create-collection'));
+    await view.dispatch('change', secondPicker);
+    view.querySelector('#collectionTagSyncNewCollectionName').value = 'Second collection';
+    const secondRequest = view.dispatch('click', button('create-collection'));
+    await Promise.resolve();
+
+    finishFirst({
+        Outcome: 'Created',
+        SelectedCollection: { Id: firstCreatedId, DisplayName: 'First collection' }
+    });
+    await firstRequest;
+    assert.equal(view.querySelector('#collectionTagSyncCreateCollection').open, true);
+    assert.notEqual(secondPicker.value, firstCreatedId);
+    assert.equal(secondPicker.closest('[data-node-editor]').dataset.collectionDisplayName, 'Animation');
+
+    finishSecond({
+        Outcome: 'Created',
+        SelectedCollection: { Id: secondCreatedId, DisplayName: 'Second collection' }
+    });
+    await secondRequest;
+    assert.equal(secondPicker.value, secondCreatedId);
+    assert.equal(secondPicker.closest('[data-node-editor]').dataset.collectionDisplayName, 'Second collection');
+    assert.equal(view.querySelector('#collectionTagSyncCreateCollection').open, false);
 });
 
 test('rendered validation shows the server message without client-side rule substitution', async () => {

@@ -208,7 +208,7 @@ export default function (view) {
         configuration: null,
         collections: [],
         tags: [],
-        pendingCollectionSelect: null,
+        collectionCreationSession: null,
         configurationEditRevision: 0,
         configurationPreviewPending: false,
         configurationMutationPending: false,
@@ -1073,23 +1073,36 @@ export default function (view) {
     }
 
     function openCollectionCreation(select) {
-        state.pendingCollectionSelect = select;
+        state.collectionCreationSession = { select, pending: false };
         const dialog = query('#collectionTagSyncCreateCollection');
         const input = query('#collectionTagSyncNewCollectionName');
+        query('[data-action="create-collection"]').disabled = false;
         setStatus('#collectionTagSyncCreateCollectionStatus', '');
         input.value = '';
-        dialog.hidden = false;
+        if (!dialog.open) {
+            dialog.showModal();
+        }
+
         input.focus();
     }
 
-    function closeCollectionCreation() {
-        const prior = state.pendingCollectionSelect;
-        query('#collectionTagSyncCreateCollection').hidden = true;
-        state.pendingCollectionSelect = null;
+    function closeCollectionCreation(session = state.collectionCreationSession) {
+        if (!session || state.collectionCreationSession !== session) {
+            return;
+        }
+
+        const prior = session.select;
+        const dialog = query('#collectionTagSyncCreateCollection');
+        if (dialog.open) {
+            dialog.close();
+        }
+
+        state.collectionCreationSession = null;
+        query('[data-action="create-collection"]').disabled = false;
         prior?.focus();
     }
 
-    function selectCreatedCollection(entry) {
+    function selectCreatedCollection(entry, session = state.collectionCreationSession) {
         const id = String(property(entry, 'Id', '') || '');
         const displayName = String(property(entry, 'DisplayName', '') || '');
         const existingIndex = state.collections.findIndex(candidate =>
@@ -1105,28 +1118,39 @@ export default function (view) {
                 String(property(right, 'DisplayName', '')), undefined, { sensitivity: 'base' })
             || String(property(left, 'Id', '')).localeCompare(String(property(right, 'Id', ''))));
         refreshCollectionSelects();
-        if (state.pendingCollectionSelect) {
-            state.pendingCollectionSelect.value = id;
-            const editor = state.pendingCollectionSelect.closest('[data-node-editor]');
+        if (state.collectionCreationSession !== session) {
+            return;
+        }
+
+        if (session?.select) {
+            session.select.value = id;
+            const editor = session.select.closest('[data-node-editor]');
             if (editor) {
                 editor.dataset.collectionDisplayName = displayName;
             }
-            if (state.pendingCollectionSelect.closest('#collectionTagSyncRunOnce')) {
+            if (session.select.closest('#collectionTagSyncRunOnce')) {
                 runOnceChanged();
             } else {
                 configurationChanged();
             }
         }
 
-        closeCollectionCreation();
+        closeCollectionCreation(session);
     }
 
     async function createCollection() {
+        const session = state.collectionCreationSession;
+        if (!session || session.pending) {
+            return;
+        }
+
+        session.pending = true;
+        query('[data-action="create-collection"]').disabled = true;
         const name = query('#collectionTagSyncNewCollectionName').value;
         setStatus('#collectionTagSyncCreateCollectionStatus', 'Creating collection…');
         try {
             const result = await requestJson(apiClient, 'POST', 'CollectionTagSync/Collections/Create', { Name: name });
-            selectCreatedCollection(property(result, 'SelectedCollection', {}));
+            selectCreatedCollection(property(result, 'SelectedCollection', {}), session);
         } catch (error) {
             const result = responsePayload(error);
             const matches = property(result, 'MatchingCollections', []) ?? [];
@@ -1143,6 +1167,10 @@ export default function (view) {
                 }
 
                 refreshCollectionSelects();
+                if (state.collectionCreationSession !== session) {
+                    return;
+                }
+
                 const container = query('#collectionTagSyncCreateCollectionStatus');
                 container.classList.add('collectionTagSyncWarning');
                 container.innerHTML = '<p>A collection with this normalized name already exists. Select one:</p>'
@@ -1156,10 +1184,19 @@ export default function (view) {
                 return;
             }
 
+            if (state.collectionCreationSession !== session) {
+                return;
+            }
+
             setStatus(
                 '#collectionTagSyncCreateCollectionStatus',
                 property(result, 'Message', 'The server rejected the collection name.'),
                 'Error');
+        } finally {
+            if (state.collectionCreationSession === session) {
+                session.pending = false;
+                query('[data-action="create-collection"]').disabled = false;
+            }
         }
     }
 
@@ -1322,6 +1359,11 @@ export default function (view) {
             updateMappingTargetLabel(event.target);
             configurationChanged();
         }
+    });
+
+    query('#collectionTagSyncCreateCollection').addEventListener('cancel', event => {
+        event.preventDefault();
+        closeCollectionCreation();
     });
 
     view.addEventListener('viewshow', load);

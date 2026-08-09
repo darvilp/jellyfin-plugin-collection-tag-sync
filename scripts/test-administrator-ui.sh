@@ -41,6 +41,8 @@ if [[ "${configuration_page}" != *'data-controller="__plugin/Collection Tag Sync
     || "${configuration_page}" != *'<span>Save configuration</span>'* \
     || "${configuration_page}" != *'<span>Preview changes</span>'* \
     || "${configuration_page}" != *'<span>Confirm removals and save</span>'* \
+    || "${configuration_page}" != *'<dialog id="collectionTagSyncCreateCollection"'* \
+    || "${configuration_page}" != *'aria-modal="true"'* \
     || "${configuration_page}" == *'Validate and save'* \
     || "${configuration_page}" != *'aria-live="polite"'* ]]; then
     printf 'The embedded administrator page did not expose its required workflows.\n' >&2

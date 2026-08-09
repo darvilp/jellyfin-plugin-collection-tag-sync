@@ -807,8 +807,9 @@ For collections:
 - picker-only selection of existing collections;
 - no free-text binding to an existing collection name;
 - target picker includes `Add new collection…`;
-- add-new opens a distinct creation workflow on the same screen and selects the
-  returned GUID after success;
+- add-new opens a focused modal associated with the originating picker, selects
+  the returned GUID after success, and returns focus to that picker after success
+  or cancel;
 - add-new rejects empty or trimmed, case-insensitive duplicate names and shows
   existing matches instead;
 - a successfully created collection remains if the surrounding workflow is
