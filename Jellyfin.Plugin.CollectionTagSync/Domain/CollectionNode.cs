@@ -29,6 +29,11 @@ public sealed class CollectionNode : Node
     public string? DisplayName { get; }
 
     /// <inheritdoc />
+    public override string DisplayLabel => string.IsNullOrWhiteSpace(DisplayName)
+        ? $"Collection {Id:D}"
+        : $"Collection \"{DisplayName}\"";
+
+    /// <inheritdoc />
     public override bool Equals(Node? other)
     {
         return other is CollectionNode collection && Id.Equals(collection.Id);

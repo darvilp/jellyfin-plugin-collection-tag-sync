@@ -22,6 +22,9 @@ public sealed class TagNode : Node
     public string Value { get; }
 
     /// <inheritdoc />
+    public override string DisplayLabel => $"Tag \"{Value}\"";
+
+    /// <inheritdoc />
     public override bool Equals(Node? other)
     {
         return other is TagNode tag
