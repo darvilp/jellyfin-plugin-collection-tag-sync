@@ -133,11 +133,13 @@
             <div id="collectionTagSyncDiagnostics"></div>
         </section>
 
-        <section id="collectionTagSyncCreateCollection" class="verticalSection collectionTagSyncDialog"
-                 role="dialog" aria-labelledby="collectionTagSyncCreateCollectionTitle" hidden>
+        <dialog id="collectionTagSyncCreateCollection" class="collectionTagSyncDialog"
+                aria-modal="true" aria-labelledby="collectionTagSyncCreateCollectionTitle"
+                aria-describedby="collectionTagSyncCreateCollectionDescription">
             <h2 id="collectionTagSyncCreateCollectionTitle" class="sectionTitle">Add new collection</h2>
-            <p class="fieldDescription">
+            <p id="collectionTagSyncCreateCollectionDescription" class="fieldDescription">
                 Creation takes effect immediately in Jellyfin and is not rolled back if you cancel or a later save fails.
+                After creation, the new collection is selected in the picker you opened this from.
             </p>
             <div class="inputContainer">
                 <label class="inputLabel inputLabelUnfocused" for="collectionTagSyncNewCollectionName">Collection name</label>
@@ -152,7 +154,7 @@
                 </button>
             </div>
             <div id="collectionTagSyncCreateCollectionStatus" class="collectionTagSyncStatus" aria-live="polite"></div>
-        </section>
+        </dialog>
     </div>
 
     <style>
@@ -174,6 +176,16 @@
         .collectionTagSyncSuccess { color: #9ee6a8; }
         .collectionTagSyncMutation { overflow-wrap: anywhere; }
         .collectionTagSyncPreview ul, .collectionTagSyncDiagnostic ul { margin-top: .5rem; }
-        .collectionTagSyncDialog { border-color: rgba(0, 164, 220, .75); }
+        .collectionTagSyncDialog {
+            background: var(--background-color, #181818);
+            border-color: rgba(0, 164, 220, .75);
+            color: inherit;
+            margin: auto;
+            max-height: calc(100vh - 2rem);
+            max-width: 38rem;
+            overflow: auto;
+            width: calc(100% - 2rem);
+        }
+        .collectionTagSyncDialog::backdrop { background: rgba(0, 0, 0, .72); }
     </style>
 </div>
