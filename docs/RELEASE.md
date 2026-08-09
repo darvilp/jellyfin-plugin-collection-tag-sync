@@ -308,10 +308,15 @@ On a clean/reproducible Jellyfin instance:
 7. Upgrade from the prior release when one exists.
 8. Confirm configuration is retained.
 
-The temporary-catalog installation is automated. A true cross-version
-upgrade/configuration-retention smoke test becomes possible when a second
-package version exists; the first public release records that boundary instead
-of claiming an upgrade that cannot yet occur.
+The temporary-catalog installation is automated. Beginning with the second
+public package, every release must set `build.yaml`'s `upgradeFrom` to a prior
+public version and pass `scripts/test-manifest-upgrade.sh`. That gate installs
+the public prior package, persists non-default scalar settings and a disabled
+mapping containing a GUID-backed collection target and ordered tag sources,
+upgrades through Jellyfin's catalog, and verifies the exact revision and
+configuration after restart. The
+first public release has no predecessor and skips only this upgrade-specific
+gate when manually revalidated.
 
 ---
 

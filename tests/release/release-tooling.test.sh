@@ -9,11 +9,13 @@ verify_release="${project_root}/scripts/verify-release-contract.sh"
 prepare_assets="${project_root}/scripts/prepare-release-assets.sh"
 verify_history="${project_root}/scripts/verify-manifest-history.sh"
 workflow_path="${project_root}/.github/workflows/release.yml"
-release_notes="${project_root}/docs/releases/v0.1.0.0-alpha.md"
+read_build_metadata="${project_root}/scripts/read-build-metadata.sh"
 temp_root="$(mktemp -d /tmp/collection-tag-sync-release-test.XXXXXX)"
 trap 'rm -rf -- "${temp_root}"' EXIT
 
-version="0.1.0.0"
+version="$("${read_build_metadata}" version)"
+upgrade_from="$("${read_build_metadata}" upgradeFrom)"
+release_notes="${project_root}/docs/releases/v${version}-alpha.md"
 tag="v${version}"
 target_abi="10.11.11.0"
 asset_name="Jellyfin.Plugin.CollectionTagSync_${version}.zip"
@@ -23,6 +25,8 @@ build_output_literal='source-commit: ${{ steps.source.outputs.commit }}'
 publish_ref_literal='ref: ${{ needs.build.outputs.source-commit }}'
 plugin_url_literal='--plugin-url "${ASSET_URL}"'
 manifest_install_literal='scripts/test-manifest-install.sh "${PACKAGE}"'
+manifest_upgrade_literal='scripts/test-manifest-upgrade.sh "${PACKAGE}"'
+upgrade_gate_literal="if: steps.upgrade-contract.outputs.enabled == 'true'"
 
 test -f "${workflow_path}"
 grep --fixed-strings -- '- "v*.*.*.*"' "${workflow_path}" >/dev/null
@@ -36,7 +40,12 @@ grep --fixed-strings "${publish_ref_literal}" "${workflow_path}" >/dev/null
 grep --fixed-strings 'Reject a moved release tag' "${workflow_path}" >/dev/null
 grep --fixed-strings -- "${plugin_url_literal}" "${workflow_path}" >/dev/null
 grep --fixed-strings "${manifest_install_literal}" "${workflow_path}" >/dev/null
+grep --fixed-strings "${manifest_upgrade_literal}" "${workflow_path}" >/dev/null
+grep --fixed-strings 'id: upgrade-contract' "${workflow_path}" >/dev/null
+grep --fixed-strings "${upgrade_gate_literal}" "${workflow_path}" >/dev/null
+grep --fixed-strings 'scripts/test-env.sh reset --confirm' "${workflow_path}" >/dev/null
 grep --fixed-strings 'export JFTS_UID JFTS_GID' "${workflow_path}" >/dev/null
+test "$(grep --count --fixed-strings 'export JFTS_UID JFTS_GID' "${workflow_path}")" -eq 2
 grep --fixed-strings 'gh release create' "${workflow_path}" >/dev/null
 grep --fixed-strings -- '--draft' "${workflow_path}" >/dev/null
 if grep --extended-regexp --line-number 'uses: [^ ]+@(main|master|v[0-9]+)' "${workflow_path}"; then
@@ -56,10 +65,15 @@ fi
 for heading in '## Compatibility' '## Included behavior' '## Configuration and upgrade notes' '## Known limitations'; do
     grep --fixed-strings "${heading}" "${release_notes}" >/dev/null
 done
+test -x "${project_root}/scripts/test-manifest-upgrade.sh"
+test "${upgrade_from}" != "${version}"
+test -f "${project_root}/docs/releases/v${upgrade_from}-alpha.md"
+shellcheck "${project_root}/scripts/test-manifest-upgrade.sh"
 if grep --extended-regexp --line-number '0\.1\.0\.0|10\.11\.11\.0' \
     "${project_root}/scripts/package.sh" \
     "${project_root}/scripts/install-local-plugin.sh" \
-    "${project_root}/scripts/test-manifest-install.sh"; then
+    "${project_root}/scripts/test-manifest-install.sh" \
+    "${project_root}/scripts/test-manifest-upgrade.sh"; then
     printf 'Package/install scripts must derive version and ABI from build.yaml.\n' >&2
     exit 1
 fi
@@ -108,14 +122,15 @@ make_package "${version}" "${target_abi}" "${package_path}"
 
 "${verify_release}" "${tag}" "${package_path}"
 
+mismatched_version="${version%.*}.$((10#${version##*.} + 1))"
 expect_failure \
     'does not match build.yaml version' \
-    "${verify_release}" "v0.1.0.1" "${package_path}"
+    "${verify_release}" "v${mismatched_version}" "${package_path}"
 
 mismatched_package="${temp_root}/mismatched.zip"
-make_package "0.1.0.1" "${target_abi}" "${mismatched_package}"
+make_package "${mismatched_version}" "${target_abi}" "${mismatched_package}"
 expect_failure \
-    'Package version 0.1.0.1 does not match build.yaml version 0.1.0.0.' \
+    "Package version ${mismatched_version} does not match build.yaml version ${version}." \
     "${verify_release}" "${tag}" "${mismatched_package}"
 
 assets_dir="${temp_root}/assets"

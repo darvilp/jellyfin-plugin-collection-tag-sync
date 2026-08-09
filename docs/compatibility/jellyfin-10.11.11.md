@@ -51,6 +51,11 @@ not used.
 - Jellyfin loaded the package through a temporary custom JPRM manifest, then
   restarted healthy with the plugin Active. The test restored the original
   Jellyfin repository list afterward.
+- Jellyfin installed the public 0.1.0.0 package through a staged temporary
+  catalog, accepted a non-default configuration at revision 1, upgraded to the
+  0.1.1.0 candidate, restarted Active, and retained that exact revision,
+  every sentinel setting, and a disabled Authoritative mapping with its real
+  collection GUID plus two ordered tag sources.
 - A bounded exact Tag to Collection Additive mapping synchronized both the
   synthetic Movie and Series through `ItemUpdated`, the pure planner, and
   `ICollectionManager`. Duplicate item updates produced exactly one effective
@@ -160,7 +165,7 @@ not used.
   serialized worker used by Jellyfin's scheduled task.
 
 The package verifier confirmed that the ZIP contains exactly the plugin DLL
-and JPRM `meta.json`, with version `0.1.0.0`, the permanent GUID, and target ABI
+and JPRM `meta.json`, with version `0.1.1.0`, the permanent GUID, and target ABI
 `10.11.11.0`.
 
 ## Reproducible validation
@@ -189,6 +194,7 @@ bash scripts/test-run-once.sh
 bash scripts/test-collection-selection.sh
 bash scripts/test-administrator-ui.sh
 bash scripts/test-manifest-install.sh
+bash scripts/test-manifest-upgrade.sh
 ```
 
 Validated results:
@@ -230,6 +236,8 @@ Validated results:
   passed;
 - manual package install: passed;
 - temporary-manifest catalog install: passed;
+- public-package `0.1.0.0` to candidate `0.1.1.0` catalog upgrade with exact
+  configuration revision, scalar setting, and mapping retention: passed;
 - release tooling: exact four-component version/ABI/framework alignment,
   two-file package inspection, canonical asset naming, SHA-256 verification,
   JPRM checksum verification, exact immutable `sourceUrl`, pinned Actions, and
@@ -266,5 +274,6 @@ Validated results:
   validation rather than a blocker for Phase 7 implementation.
 - This environment proves Jellyfin 10.11.11 on Linux containers in WSL. It does
   not claim native Windows-server or older-Jellyfin compatibility.
-- Upgrade behavior from a prior released plugin version remains a release smoke
-  test once a prior version exists.
+- Every release after the first must repeat the catalog upgrade and
+  configuration-retention smoke test from the public version named by
+  `build.yaml`.

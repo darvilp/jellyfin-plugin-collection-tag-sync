@@ -35,14 +35,14 @@ administrator dashboard:
    ```
 
 3. Open **Catalog**, select **Collection Tag Sync**, and install version
-   `0.1.0.0`.
+   `0.1.1.0`.
 4. Restart Jellyfin when prompted.
 5. Open **Dashboard → Plugins → Collection Tag Sync** to configure mappings or
    run one-time operations.
 
 Back up Jellyfin's configuration and data before alpha installation or upgrade.
 Uninstalling the plugin does not undo tag or collection metadata it previously
-synchronized. See the [alpha release notes](docs/releases/v0.1.0.0-alpha.md)
+synchronized. See the [current alpha release notes](docs/releases/v0.1.1.0-alpha.md)
 for compatibility and known limitations.
 
 ## Documentation

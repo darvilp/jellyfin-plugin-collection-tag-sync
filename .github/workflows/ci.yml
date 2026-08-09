@@ -52,8 +52,8 @@ jobs:
 
       - name: Test release tooling
         run: |
-          bash -n scripts/read-build-metadata.sh scripts/package.sh scripts/install-local-plugin.sh scripts/verify-package.sh scripts/verify-release-contract.sh scripts/verify-manifest-history.sh scripts/prepare-release-assets.sh scripts/configure-test-server.sh scripts/test-manifest-install.sh tests/release/release-tooling.test.sh
-          shellcheck scripts/read-build-metadata.sh scripts/package.sh scripts/install-local-plugin.sh scripts/verify-package.sh scripts/verify-release-contract.sh scripts/verify-manifest-history.sh scripts/prepare-release-assets.sh scripts/configure-test-server.sh scripts/test-manifest-install.sh tests/release/release-tooling.test.sh
+          bash -n scripts/read-build-metadata.sh scripts/package.sh scripts/install-local-plugin.sh scripts/verify-package.sh scripts/verify-release-contract.sh scripts/verify-manifest-history.sh scripts/prepare-release-assets.sh scripts/configure-test-server.sh scripts/test-manifest-install.sh scripts/test-manifest-upgrade.sh tests/release/release-tooling.test.sh
+          shellcheck scripts/read-build-metadata.sh scripts/package.sh scripts/install-local-plugin.sh scripts/verify-package.sh scripts/verify-release-contract.sh scripts/verify-manifest-history.sh scripts/prepare-release-assets.sh scripts/configure-test-server.sh scripts/test-manifest-install.sh scripts/test-manifest-upgrade.sh tests/release/release-tooling.test.sh
           tests/release/release-tooling.test.sh
 
       - name: Build

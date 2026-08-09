@@ -7,10 +7,10 @@ project_root="$(cd -- "${script_dir}/.." && pwd)"
 field="${1:-}"
 
 case "${field}" in
-    framework | guid | targetAbi | version)
+    framework | guid | targetAbi | upgradeFrom | version)
         ;;
     *)
-        printf 'Usage: %s {framework|guid|targetAbi|version}\n' "$0" >&2
+        printf 'Usage: %s {framework|guid|targetAbi|upgradeFrom|version}\n' "$0" >&2
         exit 2
         ;;
 esac
