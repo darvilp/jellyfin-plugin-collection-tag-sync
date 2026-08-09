@@ -14,6 +14,11 @@ public sealed class PluginConfiguration : BasePluginConfiguration
     public int SchemaVersion { get; set; } = 1;
 
     /// <summary>
+    /// Gets or sets the monotonically increasing accepted configuration revision.
+    /// </summary>
+    public long Revision { get; set; }
+
+    /// <summary>
     /// Gets or sets the persisted continuous mapping groups.
     /// </summary>
     [SuppressMessage(

@@ -46,6 +46,23 @@ public sealed class ItemReconciler
             return null;
         }
 
+        return await ReconcileAsync(itemId, configuration, cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Reconciles one item against an immutable accepted configuration snapshot.
+    /// </summary>
+    /// <param name="itemId">The Jellyfin item identifier.</param>
+    /// <param name="configuration">The operational configuration snapshot.</param>
+    /// <param name="cancellationToken">The cancellation token.</param>
+    /// <returns>The applied or already-settled plan.</returns>
+    internal async Task<ReconciliationPlan?> ReconcileAsync(
+        Guid itemId,
+        MappingConfiguration configuration,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(configuration);
+
         var observedState = await _stateReader
             .ReadAsync(itemId, configuration, cancellationToken)
             .ConfigureAwait(false);
