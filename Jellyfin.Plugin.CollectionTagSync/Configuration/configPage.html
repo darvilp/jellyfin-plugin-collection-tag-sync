@@ -153,6 +153,8 @@
             <p id="collectionTagSyncCreateCollectionDescription" class="fieldDescription">
                 Creation takes effect immediately in Jellyfin and is not rolled back if you cancel or a later save fails.
                 After creation, the new collection is selected in the picker you opened this from.
+                The collection starts locked so metadata providers cannot replace its explicit name; unlock it later in
+                Jellyfin if you prefer provider-managed collection metadata.
             </p>
             <div class="inputContainer">
                 <label class="inputLabel inputLabelUnfocused" for="collectionTagSyncNewCollectionName">Collection name</label>

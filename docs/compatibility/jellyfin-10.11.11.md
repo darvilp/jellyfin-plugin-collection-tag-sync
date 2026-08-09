@@ -143,8 +143,12 @@ not used.
 - The distinct Add New endpoint trimmed a proposed name, immediately created
   the collection, and returned its GUID as the selected value. Empty names were
   rejected before creation. A trimmed case-insensitive duplicate returned HTTP
-  409 with the existing picker match and created nothing. The created collection
-  remained after a later invalid run-once request and Jellyfin restart.
+  409 with the existing picker match and created nothing. Explicitly named
+  collections are created locked: a live `Cass` probe retained that name and no
+  provider IDs across Jellyfin's immediate metadata-refresh window. An
+  administrator may later unlock the collection in Jellyfin to opt into
+  provider-managed metadata. The created collection remained after a later
+  invalid run-once request and Jellyfin restart.
 - Jellyfin served both embedded administrator resources through its native
   `ConfigurationPage` route. The page exposed continuous mapping, run-once,
   Full Reconcile, Add New, preview/confirmation, status, and diagnostics
@@ -190,7 +194,7 @@ bash scripts/test-manifest-install.sh
 Validated results:
 
 - build: zero warnings and zero errors;
-- tests: 176 .NET and 8 administrator UI tests passed, 0 failed;
+- tests: 177 .NET and 36 administrator UI tests passed, 0 failed;
 - event observation: all four subscribed event types observed;
 - persistence/API contract: passed across two restarts;
 - walking slice: Movie and Series added once each, then settled at zero delta;
@@ -215,7 +219,8 @@ Validated results:
   exact background execution, unchanged persisted graph/revision,
   changed-removal rejection, and ephemeral direct-target exclusion passed;
 - collection selection: elevated GUID/name picker, rename-safe identity, trimmed
-  Add New selection, empty/duplicate rejection, duplicate recovery choices, and
+  Add New selection, locked explicit-name protection through Jellyfin's metadata
+  refresh window, empty/duplicate rejection, duplicate recovery choices, and
   independent persistence after surrounding failure/restart passed;
 - administrator UI: embedded page/controller discovery, GUID-valued duplicate
   picker choices, server-message rendering, stale-preview invalidation,

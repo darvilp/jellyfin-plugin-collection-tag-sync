@@ -51,7 +51,7 @@ public sealed class JellyfinCollectionCatalogTests
     }
 
     [Fact]
-    public async Task CreationUsesJellyfinReturnedIdentityAndNoInitialMembers()
+    public async Task CreationLocksAdministratorNameAndUsesJellyfinReturnedIdentity()
     {
         var created = new BoxSet
         {
@@ -62,7 +62,7 @@ public sealed class JellyfinCollectionCatalogTests
         collectionManager
             .Setup(manager => manager.CreateCollectionAsync(It.Is<CollectionCreationOptions>(options =>
                 options.Name == "Waltney Picks"
-                && !options.IsLocked
+                && options.IsLocked
                 && options.ItemIdList.Count == 0)))
             .ReturnsAsync(created);
         var catalog = new JellyfinCollectionCatalog(
