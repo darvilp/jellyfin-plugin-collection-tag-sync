@@ -4,9 +4,9 @@ Collection Tag Sync is a third-party Jellyfin server plugin for explicit,
 policy-driven synchronization between direct Movie and Series tags and
 collection memberships.
 
-> **Project status:** Phase 1 integration scaffold complete. The accepted
-> design is being decomposed into implementation issues; synchronization
-> behavior has not begun.
+> **Project status:** The pure planner and first bounded event-to-writer
+> synchronization slice are complete. Continuous behavior is being expanded
+> through the ordered implementation backlog.
 
 ## Planned capabilities
 

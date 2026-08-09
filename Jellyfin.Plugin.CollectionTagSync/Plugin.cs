@@ -19,7 +19,13 @@ public sealed class Plugin : BasePlugin<PluginConfiguration>
     public Plugin(IApplicationPaths applicationPaths, IXmlSerializer xmlSerializer)
         : base(applicationPaths, xmlSerializer)
     {
+        Instance = this;
     }
+
+    /// <summary>
+    /// Gets the loaded plugin instance.
+    /// </summary>
+    public static Plugin Instance { get; private set; } = null!;
 
     /// <inheritdoc />
     public override string Name => "Collection Tag Sync";

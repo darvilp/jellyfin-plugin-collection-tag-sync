@@ -2,7 +2,7 @@
 
 **Validated:** 2026-08-09
 
-**Scope:** Phase 1 repository and integration spike
+**Scope:** Phase 1 integration spike and Phase 3 walking slice
 
 ## Pinned compatibility set
 
@@ -50,6 +50,11 @@ not used.
 - Jellyfin loaded the package through a temporary custom JPRM manifest, then
   restarted healthy with the plugin Active. The test restored the original
   Jellyfin repository list afterward.
+- A bounded exact Tag to Collection Additive mapping synchronized both the
+  synthetic Movie and Series through `ItemUpdated`, the pure planner, and
+  `ICollectionManager`. Duplicate item updates produced exactly one effective
+  write per item. Each plugin-generated collection event caused a second pass
+  that logged zero mutations.
 
 The package verifier confirmed that the ZIP contains exactly the plugin DLL
 and JPRM `meta.json`, with version `0.1.0.0`, the permanent GUID, and target ABI
@@ -67,24 +72,26 @@ bash scripts/package.sh
 bash scripts/install-local-plugin.sh
 bash scripts/test-event-observation.sh
 bash scripts/test-jellyfin-contracts.sh
+bash scripts/test-walking-slice.sh
 bash scripts/test-manifest-install.sh
 ```
 
 Validated results:
 
 - build: zero warnings and zero errors;
-- tests: 2 passed, 0 failed;
+- tests: 44 passed, 0 failed;
 - event observation: all four subscribed event types observed;
 - persistence/API contract: passed across two restarts;
+- walking slice: Movie and Series added once each, then settled at zero delta;
 - manual package install: passed;
 - temporary-manifest catalog install: passed.
 
 ## Boundaries carried forward
 
-- The Phase 1 observer proves that plugin subscriptions receive Jellyfin events
-  emitted by real API mutations. The Phase 3 vertical slice must prove that
-  mutations made by the plugin's own writers emit self-events and settle to a
-  zero-delta second pass.
+- The Phase 3 walking slice proves that mutations made by the plugin's own
+  collection writer emit self-events and settle to a zero-delta second pass.
+  Tag writing, Authoritative removals, multi-hop execution, and recovery remain
+  later implementation phases.
 - The create endpoint's independent persistence was proven. Cancellation and
   save-failure behavior around the future application workflow remains an
   application-level test for the run-once/configuration phase.
