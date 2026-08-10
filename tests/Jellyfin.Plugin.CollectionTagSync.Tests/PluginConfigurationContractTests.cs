@@ -24,6 +24,14 @@ public sealed class PluginConfigurationContractTests
         Assert.Empty(configuration.MappingGroups);
     }
 
+    [Fact]
+    public void SavedRunOnceGroupsStartEmpty()
+    {
+        var configuration = new PluginConfiguration();
+
+        Assert.Empty(configuration.RunOnceGroups);
+    }
+
     [Theory]
     [InlineData(0)]
     [InlineData(5)]

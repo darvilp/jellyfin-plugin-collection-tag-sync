@@ -386,6 +386,247 @@ public sealed class RunOnceServiceTests
                 .ConfigureAwait(true)).Outcome);
     }
 
+    [Fact]
+    public async Task SavedGroupsAreValidatedPersistedEditedAndDeletedWithoutChangingContinuousRevision()
+    {
+        var persistence = new RecordingPersistence(new PluginConfiguration
+        {
+            Revision = 12,
+            MappingGroups = [Group(Tag("Continuous"), [Tag("Source")], MappingPolicy.Additive)],
+        });
+        using var service = CreateService(
+            persistence,
+            new FixedCatalog([], []),
+            new MutableStateReader(),
+            new ConfigurationReconciliationDispatcher(new BackgroundReconciliationStatusStore()),
+            new BackgroundReconciliationStatusStore());
+        var candidate = SavedGroup(
+            Guid.Empty,
+            Tag("Run target"),
+            [Tag("Run source")],
+            MappingPolicy.Additive);
+
+        var created = await service.SaveGroupAsync(candidate, CancellationToken.None).ConfigureAwait(true);
+
+        Assert.Equal(RunOnceGroupSaveOutcome.Saved, created.Outcome);
+        var createdGroup = Assert.IsType<RunOnceGroupConfiguration>(created.Group);
+        Assert.NotEqual(Guid.Empty, createdGroup.Id);
+        Assert.Equal(12, persistence.Current.Revision);
+        Assert.Single(persistence.Current.MappingGroups);
+        Assert.Equal(createdGroup.Id, Assert.Single(persistence.Current.RunOnceGroups).Id);
+
+        var edited = await service.SaveGroupAsync(
+            SavedGroup(
+                createdGroup.Id,
+                Tag("Edited target"),
+                [Tag("Edited source")],
+                MappingPolicy.Authoritative),
+            CancellationToken.None).ConfigureAwait(true);
+
+        Assert.Equal(RunOnceGroupSaveOutcome.Saved, edited.Outcome);
+        var persisted = Assert.Single(persistence.Current.RunOnceGroups);
+        Assert.Equal("Edited target", persisted.Target.TagValue);
+        Assert.Equal(MappingPolicy.Authoritative, persisted.Policy);
+        Assert.True(await service.DeleteGroupAsync(createdGroup.Id, CancellationToken.None).ConfigureAwait(true));
+        Assert.Empty(persistence.Current.RunOnceGroups);
+        Assert.False(await service.DeleteGroupAsync(createdGroup.Id, CancellationToken.None).ConfigureAwait(true));
+    }
+
+    [Fact]
+    public async Task SavedGroupPreviewIsIndependentAndStaleAfterSelectionEditOrDelete()
+    {
+        var itemId = new Guid("d39c71ea-29be-4718-8cb6-3ba508e46715");
+        var administratorId = new Guid("15d03f0a-d816-4325-aa53-df115d11dbaf");
+        var groupAId = new Guid("b7e8792a-4f25-4c0e-9ce4-fe9636348c26");
+        var groupBId = new Guid("c4649095-58e7-4529-8995-122f9c513e29");
+        var persistence = new RecordingPersistence(new PluginConfiguration
+        {
+            Revision = 6,
+            RunOnceGroups =
+            [
+                SavedGroup(groupAId, Tag("Target A"), [Tag("Source A")], MappingPolicy.Additive),
+                SavedGroup(groupBId, Tag("Target B"), [Tag("Source B")], MappingPolicy.Additive),
+            ],
+        });
+        var statusStore = new BackgroundReconciliationStatusStore();
+        var dispatcher = new ConfigurationReconciliationDispatcher(statusStore);
+        using var service = CreateService(
+            persistence,
+            new FixedCatalog([itemId], []),
+            new MutableStateReader(State(itemId, EligibleItemKind.Movie, ["Source A"], [])),
+            dispatcher,
+            statusStore);
+        var requestA = new SavedRunOnceOperationRequest { GroupId = groupAId };
+        var requestB = new SavedRunOnceOperationRequest { GroupId = groupBId };
+
+        var first = await service.PreviewSavedAsync(requestA, administratorId, CancellationToken.None)
+            .ConfigureAwait(true);
+
+        var firstAuthorization = Assert.IsType<RunOncePreviewAuthorization>(first.Authorization);
+        var previewItem = Assert.Single(firstAuthorization.Preview.Items);
+        var mutation = Assert.Single(previewItem.Mutations);
+        Assert.Equal("Target A", mutation.Target.TagValue);
+        Assert.Equal(
+            RunOnceExecutionOutcome.RequiresPreview,
+            (await service.ConfirmSavedAsync(
+                requestB,
+                administratorId,
+                firstAuthorization.Authorization,
+                CancellationToken.None).ConfigureAwait(true)).Outcome);
+        Assert.False(dispatcher.Reader.TryRead(out _));
+
+        var editAuthorization = Assert.IsType<RunOncePreviewAuthorization>((await service
+            .PreviewSavedAsync(requestA, administratorId, CancellationToken.None)
+            .ConfigureAwait(true)).Authorization);
+        await service.SaveGroupAsync(
+            SavedGroup(groupAId, Tag("Edited A"), [Tag("Source A")], MappingPolicy.Additive),
+            CancellationToken.None).ConfigureAwait(true);
+        Assert.Equal(
+            RunOnceExecutionOutcome.InvalidAuthorization,
+            (await service.ConfirmSavedAsync(
+                requestA,
+                administratorId,
+                editAuthorization.Authorization,
+                CancellationToken.None).ConfigureAwait(true)).Outcome);
+        Assert.False(dispatcher.Reader.TryRead(out _));
+
+        var deleteAuthorization = Assert.IsType<RunOncePreviewAuthorization>((await service
+            .PreviewSavedAsync(requestA, administratorId, CancellationToken.None)
+            .ConfigureAwait(true)).Authorization);
+        Assert.True(await service.DeleteGroupAsync(groupAId, CancellationToken.None).ConfigureAwait(true));
+        Assert.Equal(
+            RunOnceExecutionOutcome.RequiresPreview,
+            (await service.ConfirmSavedAsync(
+                requestA,
+                administratorId,
+                deleteAuthorization.Authorization,
+                CancellationToken.None).ConfigureAwait(true)).Outcome);
+        Assert.False(dispatcher.Reader.TryRead(out _));
+        Assert.Equal(groupBId, Assert.Single(persistence.Current.RunOnceGroups).Id);
+    }
+
+    [Fact]
+    public async Task AnySavedGroupWriteAndOrderedSourceChangeInvalidateItsPreview()
+    {
+        var itemId = new Guid("e799784d-81f8-477c-8577-d553306134a0");
+        var administratorId = new Guid("5954e597-8fa0-4ae3-923a-582d517fd9ac");
+        var groupId = new Guid("028d2d75-48d7-470f-ac3d-e387d3f9cb3b");
+        var original = SavedGroup(
+            groupId,
+            Tag("Target"),
+            [Tag("Source A"), Tag("Source B")],
+            MappingPolicy.Additive);
+        var persistence = new RecordingPersistence(new PluginConfiguration
+        {
+            Revision = 8,
+            RunOnceGroups = [original],
+        });
+        var statusStore = new BackgroundReconciliationStatusStore();
+        var dispatcher = new ConfigurationReconciliationDispatcher(statusStore);
+        using var service = CreateService(
+            persistence,
+            new FixedCatalog([itemId], []),
+            new MutableStateReader(State(itemId, EligibleItemKind.Movie, ["Source A"], [])),
+            dispatcher,
+            statusStore);
+        var request = new SavedRunOnceOperationRequest { GroupId = groupId };
+        var savedAgainAuthorization = Assert.IsType<RunOncePreviewAuthorization>((await service
+            .PreviewSavedAsync(request, administratorId, CancellationToken.None)
+            .ConfigureAwait(true)).Authorization);
+
+        await service.SaveGroupAsync(original, CancellationToken.None).ConfigureAwait(true);
+
+        Assert.Equal(
+            RunOnceExecutionOutcome.InvalidAuthorization,
+            (await service.ConfirmSavedAsync(
+                request,
+                administratorId,
+                savedAgainAuthorization.Authorization,
+                CancellationToken.None).ConfigureAwait(true)).Outcome);
+
+        var reorderedAuthorization = Assert.IsType<RunOncePreviewAuthorization>((await service
+            .PreviewSavedAsync(request, administratorId, CancellationToken.None)
+            .ConfigureAwait(true)).Authorization);
+        var changed = PluginConfigurationCloner.Clone(persistence.Current);
+        changed.RunOnceGroups[0].Sources = [Tag("Source B"), Tag("Source A")];
+        persistence.Replace(changed);
+
+        Assert.Equal(
+            RunOnceExecutionOutcome.RequiresPreview,
+            (await service.ConfirmSavedAsync(
+                request,
+                administratorId,
+                reorderedAuthorization.Authorization,
+                CancellationToken.None).ConfigureAwait(true)).Outcome);
+        Assert.False(dispatcher.Reader.TryRead(out _));
+    }
+
+    [Fact]
+    public async Task NonEmptyUnknownGroupIdentityCannotRecreateADeletedGroup()
+    {
+        var unknownId = new Guid("e1d15360-492d-49b9-b568-3fe9bd9e4925");
+        var persistence = new RecordingPersistence(new PluginConfiguration());
+        using var service = CreateService(
+            persistence,
+            new FixedCatalog([], []),
+            new MutableStateReader(),
+            new ConfigurationReconciliationDispatcher(new BackgroundReconciliationStatusStore()),
+            new BackgroundReconciliationStatusStore());
+
+        var result = await service.SaveGroupAsync(
+            SavedGroup(unknownId, Tag("Target"), [Tag("Source")], MappingPolicy.Additive),
+            CancellationToken.None).ConfigureAwait(true);
+
+        Assert.Equal(RunOnceGroupSaveOutcome.Invalid, result.Outcome);
+        Assert.Contains(result.ValidationErrors, error => error.Code == RunOnceValidationErrorCode.MissingGroup);
+        Assert.Empty(persistence.Current.RunOnceGroups);
+    }
+
+    [Fact]
+    public async Task SuccessfulSavedGroupExecutionRetainsTheGroupAndDoesNotPersistExclusions()
+    {
+        var itemId = new Guid("1ebf5c80-b5a4-4883-a4ec-9510e25c7cb7");
+        var administratorId = new Guid("37f1779b-d36d-48fc-8149-3a614b643e82");
+        var groupId = new Guid("7a2a3a06-fb0a-4d3c-8fa2-6c625650fbf0");
+        var group = SavedGroup(groupId, Tag("Target"), [Tag("Source")], MappingPolicy.Additive);
+        var persistence = new RecordingPersistence(new PluginConfiguration
+        {
+            Revision = 3,
+            RunOnceGroups = [group],
+        });
+        var statusStore = new BackgroundReconciliationStatusStore();
+        var dispatcher = new ConfigurationReconciliationDispatcher(statusStore);
+        using var service = CreateService(
+            persistence,
+            new FixedCatalog([itemId], []),
+            new MutableStateReader(State(itemId, EligibleItemKind.Movie, ["Source"], [])),
+            dispatcher,
+            statusStore);
+        var request = new SavedRunOnceOperationRequest
+        {
+            GroupId = groupId,
+            ExcludedItemIds = [],
+        };
+
+        var authorization = Assert.IsType<RunOncePreviewAuthorization>((await service
+            .PreviewSavedAsync(request, administratorId, CancellationToken.None)
+            .ConfigureAwait(true)).Authorization);
+        var result = await service
+            .ConfirmSavedAsync(
+                request,
+                administratorId,
+                authorization.Authorization,
+                CancellationToken.None)
+            .ConfigureAwait(true);
+
+        Assert.Equal(RunOnceExecutionOutcome.Accepted, result.Outcome);
+        Assert.Equal(0, persistence.SaveCount);
+        var retained = Assert.Single(service.GetGroups());
+        Assert.Equal(groupId, retained.Id);
+        Assert.Equal("Target", retained.Target.TagValue);
+        Assert.True(dispatcher.Reader.TryRead(out _));
+    }
+
     private static RunOnceService CreateService(
         RecordingPersistence persistence,
         FixedCatalog catalog,
@@ -432,6 +673,21 @@ public sealed class RunOnceServiceTests
             Sources = sources,
             Policy = policy,
             IsEnabled = enabled,
+        };
+    }
+
+    private static RunOnceGroupConfiguration SavedGroup(
+        Guid id,
+        MappingNodeConfiguration target,
+        MappingNodeConfiguration[] sources,
+        MappingPolicy policy)
+    {
+        return new RunOnceGroupConfiguration
+        {
+            Id = id,
+            Target = target,
+            Sources = sources,
+            Policy = policy,
         };
     }
 

@@ -4,6 +4,7 @@
 artifacts/
 TestResults/
 coverage/
+node_modules/
 
 # IDE and editor state
 .vs/
@@ -21,6 +22,7 @@ jellyfin-data/
 jellyfin-config/
 jellyfin-cache/
 jellyfin-logs/
+playwright/.auth/
 
 # Local Codex and agent state
 .agents/

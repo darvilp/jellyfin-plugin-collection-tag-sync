@@ -27,6 +27,8 @@ animation_id=''
 kids_id=''
 response_body=''
 response_code=''
+bootstrap_group_id=''
+destructive_group_id=''
 
 api_get() {
     curl --fail --silent --header "X-Emby-Token: ${access_token}" "$1"
@@ -38,6 +40,15 @@ api_post_json() {
         --header 'Content-Type: application/json' \
         --data "$2" \
         "$1"
+}
+
+delete_run_once_group() {
+    local group_id="$1"
+    if [[ -n "${group_id}" ]]; then
+        curl --silent --request DELETE \
+            --header "X-Emby-Token: ${access_token}" \
+            "${run_once_url}/Groups/${group_id}" >/dev/null
+    fi
 }
 
 request_with_status() {
@@ -52,6 +63,24 @@ request_with_status() {
         "${url}")"
     response_code="${response##*$'\n'}"
     response_body="${response%$'\n'*}"
+}
+
+restart_server() {
+    local health=''
+    docker compose --project-directory "${project_root}" -f "${project_root}/compose.yaml" \
+        restart jellyfin >/dev/null
+    for _ in {1..45}; do
+        health="$(docker inspect collection-tag-sync-jellyfin \
+            --format '{{if .State.Health}}{{.State.Health.Status}}{{else}}{{.State.Status}}{{end}}')"
+        if [[ "${health}" == "healthy" ]]; then
+            return
+        fi
+
+        sleep 1
+    done
+
+    printf 'Jellyfin did not become healthy during saved run-once restart validation.\n' >&2
+    exit 3
 }
 
 create_collection() {
@@ -163,6 +192,8 @@ activate_configuration() {
 
 restore_test_state() {
     set +e
+    delete_run_once_group "${bootstrap_group_id}"
+    delete_run_once_group "${destructive_group_id}"
     if [[ -n "${original_configuration}" ]]; then
         activate_configuration '{"SchemaVersion":1,"MappingGroups":[]}' >/dev/null
     fi
@@ -224,16 +255,47 @@ continuous_configuration="$(jq --null-input \
 activate_configuration "${continuous_configuration}"
 active_revision="$(jq --raw-output '.Revision' <<<"$(api_get "${plugin_configuration_url}")")"
 
-bootstrap="$(jq --null-input \
+bootstrap_group="$(jq --null-input \
     --arg animation_id "${animation_id}" \
     --arg animation_name "${animation_name}" \
     --arg source_tag "${source_tag}" \
     '{
         Target: {Kind: 1, CollectionId: $animation_id, CollectionDisplayName: $animation_name},
         Sources: [{Kind: 0, TagValue: $source_tag}],
-        Policy: 0,
-        ExcludedItemIds: []
+        Policy: 0
     }')"
+bootstrap_group_response="$(api_post_json "${run_once_url}/Groups" "${bootstrap_group}")"
+bootstrap_group_id="$(jq --raw-output '.Group.Id // .group.id' <<<"${bootstrap_group_response}")"
+destructive_group="$(jq --null-input \
+    --arg animation_id "${animation_id}" \
+    --arg animation_name "${animation_name}" \
+    '{
+        Target: {Kind: 1, CollectionId: $animation_id, CollectionDisplayName: $animation_name},
+        Sources: [{Kind: 0, TagValue: "Absent"}],
+        Policy: 1
+    }')"
+destructive_group_response="$(api_post_json "${run_once_url}/Groups" "${destructive_group}")"
+destructive_group_id="$(jq --raw-output '.Group.Id // .group.id' <<<"${destructive_group_response}")"
+
+restart_server
+restarted_configuration="$(api_get "${plugin_configuration_url}")"
+if ! jq --exit-status \
+    --arg bootstrap_group_id "${bootstrap_group_id}" \
+    --arg destructive_group_id "${destructive_group_id}" \
+    '((.RunOnceGroups // []) | length == 2)
+     and ((.RunOnceGroups // []) | any(.Id == $bootstrap_group_id))
+     and ((.RunOnceGroups // []) | any(.Id == $destructive_group_id))' \
+    <<<"${restarted_configuration}" >/dev/null; then
+    printf 'Two saved run-once groups did not survive Jellyfin restart.\n' >&2
+    exit 7
+fi
+
+wait_for_collection_state "${animation_id}" "${movie_id}" false
+wait_for_tag_state "${movie_id}" "${cascade_tag}" false
+wait_for_collection_state "${kids_id}" "${movie_id}" false
+
+bootstrap="$(jq --null-input --arg group_id "${bootstrap_group_id}" \
+    '{GroupId: $group_id, ExcludedItemIds: []}')"
 request_with_status "${run_once_url}/Preview" "${bootstrap}"
 if [[ "${response_code}" != "200" ]]; then
     printf 'Run-once bootstrap preview returned HTTP %s: %s\n' \
@@ -283,22 +345,18 @@ wait_for_collection_state "${kids_id}" "${movie_id}" true
 persisted="$(api_get "${plugin_configuration_url}")"
 if [[ "$(jq --raw-output '.Revision' <<<"${persisted}")" -ne "${active_revision}" ]] \
     || [[ "$(jq --raw-output '(.MappingGroups // []) | length' <<<"${persisted}")" -ne 2 ]] \
+    || ! jq --exit-status --arg group_id "${bootstrap_group_id}" \
+        '(.RunOnceGroups // []) | any(.Id == $group_id)' \
+        <<<"${persisted}" >/dev/null \
     || jq --exit-status --arg animation_id "${animation_id}" \
         '.MappingGroups | any(.Target.CollectionId == $animation_id)' \
         <<<"${persisted}" >/dev/null; then
-    printf 'Run-once bootstrap changed persisted configuration or added its run-once edge.\n' >&2
+    printf 'Run-once bootstrap changed continuous configuration or lost its reusable group.\n' >&2
     exit 10
 fi
 
-destructive="$(jq --null-input \
-    --arg animation_id "${animation_id}" \
-    --arg animation_name "${animation_name}" \
-    '{
-        Target: {Kind: 1, CollectionId: $animation_id, CollectionDisplayName: $animation_name},
-        Sources: [{Kind: 0, TagValue: "Absent"}],
-        Policy: 1,
-        ExcludedItemIds: []
-    }')"
+destructive="$(jq --null-input --arg group_id "${destructive_group_id}" \
+    '{GroupId: $group_id, ExcludedItemIds: []}')"
 request_with_status "${run_once_url}/Preview" "${destructive}"
 if [[ "${response_code}" != "200" ]] \
     || ! jq --exit-status \
@@ -369,10 +427,15 @@ wait_for_reconciliation "$(jq --raw-output '.ReconciliationId // .reconciliation
 wait_for_collection_state "${animation_id}" "${movie_id}" true
 
 final_configuration="$(api_get "${plugin_configuration_url}")"
-if [[ "$(jq --raw-output '.Revision' <<<"${final_configuration}")" -ne "${active_revision}" ]]; then
-    printf 'Run-once exclusion changed the active configuration revision.\n' >&2
+if [[ "$(jq --raw-output '.Revision' <<<"${final_configuration}")" -ne "${active_revision}" ]] \
+    || [[ "$(jq --raw-output '(.RunOnceGroups // []) | length' <<<"${final_configuration}")" -ne 2 ]] \
+    || jq --exit-status \
+        '(.RunOnceGroups // []) | any(has("ExcludedItemIds") or has("excludedItemIds"))' \
+        <<<"${final_configuration}" >/dev/null; then
+    printf 'Run-once execution changed the active revision, lost a group, or persisted exclusions.\n' >&2
     exit 14
 fi
 
 printf 'Verified previewed tag-to-collection bootstrap, downstream settling, and exact background execution.\n'
-printf 'Verified no persisted edge, changed-removal rejection, and ephemeral direct-target exclusion.\n'
+printf 'Verified two groups survive restart without automatic execution and remain after explicit execution.\n'
+printf 'Verified changed-removal rejection and ephemeral direct-target exclusion.\n'

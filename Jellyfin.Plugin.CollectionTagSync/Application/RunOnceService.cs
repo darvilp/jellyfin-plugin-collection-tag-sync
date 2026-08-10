@@ -51,18 +51,212 @@ public sealed class RunOnceService : IDisposable
     }
 
     /// <summary>
-    /// Calculates a complete run-once preview without persisting an active graph edge.
+    /// Gets independent snapshots of all persisted reusable run-once groups.
+    /// </summary>
+    /// <returns>The persisted groups in administrator-defined order.</returns>
+    public IReadOnlyList<RunOnceGroupConfiguration> GetGroups()
+    {
+        return PluginConfigurationCloner.Clone(_persistence.Current).RunOnceGroups;
+    }
+
+    /// <summary>
+    /// Validates and persists one new or existing reusable run-once group.
+    /// </summary>
+    /// <param name="candidate">The complete group candidate.</param>
+    /// <param name="cancellationToken">The cancellation token.</param>
+    /// <returns>The server-normalized persisted group or validation failures.</returns>
+    public async Task<RunOnceGroupSaveResult> SaveGroupAsync(
+        RunOnceGroupConfiguration candidate,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(candidate);
+        await _operationLock.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            await _executionGate.EnterAsync(cancellationToken).ConfigureAwait(false);
+            try
+            {
+                var current = _persistence.Current;
+                var existingGroups = current.RunOnceGroups ?? [];
+                var existingIndex = candidate.Id == Guid.Empty
+                    ? -1
+                    : Array.FindIndex(existingGroups, group => group.Id == candidate.Id);
+                if (candidate.Id != Guid.Empty && existingIndex < 0)
+                {
+                    return new RunOnceGroupSaveResult(
+                        RunOnceGroupSaveOutcome.Invalid,
+                        null,
+                        [MissingGroupError(candidate.Id)]);
+                }
+
+                var request = CreateOperationRequest(candidate, []);
+                var validation = Validate(current, request);
+                if (validation.Operation is null)
+                {
+                    return new RunOnceGroupSaveResult(
+                        RunOnceGroupSaveOutcome.Invalid,
+                        null,
+                        validation.Errors);
+                }
+
+                var persistedGroup = PluginConfigurationCloner.CloneRunOnceGroup(candidate);
+                persistedGroup.Id = candidate.Id == Guid.Empty ? Guid.NewGuid() : candidate.Id;
+                var persisted = PluginConfigurationCloner.Clone(current);
+                var groups = (persisted.RunOnceGroups ?? []).ToList();
+                if (existingIndex >= 0)
+                {
+                    groups[existingIndex] = persistedGroup;
+                }
+                else
+                {
+                    groups.Add(persistedGroup);
+                }
+
+                persisted.RunOnceGroups = [.. groups];
+                _persistence.Save(persisted);
+                if (existingIndex >= 0)
+                {
+                    _authorizationService.InvalidateGroup(persistedGroup.Id);
+                }
+
+                return new RunOnceGroupSaveResult(
+                    RunOnceGroupSaveOutcome.Saved,
+                    PluginConfigurationCloner.CloneRunOnceGroup(persistedGroup),
+                    []);
+            }
+            finally
+            {
+                _executionGate.Exit();
+            }
+        }
+        finally
+        {
+            _operationLock.Release();
+        }
+    }
+
+    /// <summary>
+    /// Deletes one persisted reusable run-once group without changing continuous configuration revision.
+    /// </summary>
+    /// <param name="groupId">The stable group identity.</param>
+    /// <param name="cancellationToken">The cancellation token.</param>
+    /// <returns><see langword="true"/> when a group was removed.</returns>
+    public async Task<bool> DeleteGroupAsync(Guid groupId, CancellationToken cancellationToken)
+    {
+        if (groupId == Guid.Empty)
+        {
+            return false;
+        }
+
+        await _operationLock.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            await _executionGate.EnterAsync(cancellationToken).ConfigureAwait(false);
+            try
+            {
+                var persisted = PluginConfigurationCloner.Clone(_persistence.Current);
+                var groups = (persisted.RunOnceGroups ?? []).Where(group => group.Id != groupId).ToArray();
+                if (groups.Length == (persisted.RunOnceGroups ?? []).Length)
+                {
+                    return false;
+                }
+
+                persisted.RunOnceGroups = groups;
+                _persistence.Save(persisted);
+                _authorizationService.InvalidateGroup(groupId);
+                return true;
+            }
+            finally
+            {
+                _executionGate.Exit();
+            }
+        }
+        finally
+        {
+            _operationLock.Release();
+        }
+    }
+
+    /// <summary>
+    /// Calculates a complete preview for exactly one persisted run-once group.
+    /// </summary>
+    /// <param name="request">The selected group and ephemeral exclusions.</param>
+    /// <param name="administratorId">The initiating administrator identity.</param>
+    /// <param name="cancellationToken">The cancellation token.</param>
+    /// <returns>The server-authoritative preview result.</returns>
+    public Task<RunOncePreviewResult> PreviewSavedAsync(
+        SavedRunOnceOperationRequest request,
+        Guid administratorId,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        return PreviewCoreAsync(null, request, administratorId, cancellationToken);
+    }
+
+    /// <summary>
+    /// Recomputes and conditionally queues exactly one persisted run-once group.
+    /// </summary>
+    /// <param name="request">The selected group and exact ephemeral exclusions.</param>
+    /// <param name="administratorId">The confirming administrator identity.</param>
+    /// <param name="authorization">The opaque preview authorization.</param>
+    /// <param name="cancellationToken">The cancellation token.</param>
+    /// <returns>The server-authoritative confirmation result.</returns>
+    public Task<RunOnceExecutionResult> ConfirmSavedAsync(
+        SavedRunOnceOperationRequest request,
+        Guid administratorId,
+        string authorization,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        return ConfirmCoreAsync(null, request, administratorId, authorization, cancellationToken);
+    }
+
+    /// <inheritdoc />
+    public void Dispose()
+    {
+        _operationLock.Dispose();
+    }
+
+    /// <summary>
+    /// Calculates a transient run-once preview for focused application tests.
     /// </summary>
     /// <param name="request">The operation and ephemeral exclusion set.</param>
     /// <param name="administratorId">The initiating administrator identity.</param>
     /// <param name="cancellationToken">The cancellation token.</param>
     /// <returns>The server-authoritative preview result.</returns>
-    public async Task<RunOncePreviewResult> PreviewAsync(
+    internal Task<RunOncePreviewResult> PreviewAsync(
         RunOnceOperationRequest request,
         Guid administratorId,
         CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(request);
+        return PreviewCoreAsync(request, null, administratorId, cancellationToken);
+    }
+
+    /// <summary>
+    /// Confirms a transient run-once request for focused application tests.
+    /// </summary>
+    /// <param name="request">The exact operation and exclusion set.</param>
+    /// <param name="administratorId">The confirming administrator identity.</param>
+    /// <param name="authorization">The opaque preview authorization.</param>
+    /// <param name="cancellationToken">The cancellation token.</param>
+    /// <returns>The server-authoritative confirmation result.</returns>
+    internal Task<RunOnceExecutionResult> ConfirmAsync(
+        RunOnceOperationRequest request,
+        Guid administratorId,
+        string authorization,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        return ConfirmCoreAsync(request, null, administratorId, authorization, cancellationToken);
+    }
+
+    private async Task<RunOncePreviewResult> PreviewCoreAsync(
+        RunOnceOperationRequest? request,
+        SavedRunOnceOperationRequest? savedRequest,
+        Guid administratorId,
+        CancellationToken cancellationToken)
+    {
         if (administratorId == Guid.Empty)
         {
             throw new ArgumentException("An administrator identity is required.", nameof(administratorId));
@@ -75,7 +269,15 @@ public sealed class RunOnceService : IDisposable
             try
             {
                 var current = _persistence.Current;
-                var validation = Validate(current, request);
+                var resolvedRequest = ResolveRequest(current, request, savedRequest, out var groupId);
+                if (resolvedRequest is null)
+                {
+                    return InvalidPreview(
+                        current.Revision,
+                        [MissingGroupError(savedRequest?.GroupId ?? Guid.Empty)]);
+                }
+
+                var validation = Validate(current, resolvedRequest);
                 if (validation.Operation is null)
                 {
                     return InvalidPreview(current.Revision, validation.Errors);
@@ -98,7 +300,9 @@ public sealed class RunOnceService : IDisposable
                     preview,
                     candidatePlan.ExcludableItemIds,
                     administratorId,
+                    groupId,
                     RunOnceOperationFingerprint.Create(
+                        groupId,
                         validation.Operation,
                         validation.ExcludedItemIds),
                     current.Revision,
@@ -120,21 +324,13 @@ public sealed class RunOnceService : IDisposable
         }
     }
 
-    /// <summary>
-    /// Recomputes and conditionally queues one previously previewed run-once request.
-    /// </summary>
-    /// <param name="request">The exact operation and exclusion set.</param>
-    /// <param name="administratorId">The confirming administrator identity.</param>
-    /// <param name="authorization">The opaque preview authorization.</param>
-    /// <param name="cancellationToken">The cancellation token.</param>
-    /// <returns>The server-authoritative confirmation result.</returns>
-    public async Task<RunOnceExecutionResult> ConfirmAsync(
-        RunOnceOperationRequest request,
+    private async Task<RunOnceExecutionResult> ConfirmCoreAsync(
+        RunOnceOperationRequest? request,
+        SavedRunOnceOperationRequest? savedRequest,
         Guid administratorId,
         string authorization,
         CancellationToken cancellationToken)
     {
-        ArgumentNullException.ThrowIfNull(request);
         if (administratorId == Guid.Empty || string.IsNullOrWhiteSpace(authorization))
         {
             return ExecutionResult(
@@ -149,6 +345,14 @@ public sealed class RunOnceService : IDisposable
             try
             {
                 var current = _persistence.Current;
+                var resolvedRequest = ResolveRequest(current, request, savedRequest, out var groupId);
+                if (resolvedRequest is null)
+                {
+                    return ExecutionResult(
+                        RunOnceExecutionOutcome.RequiresPreview,
+                        current.Revision);
+                }
+
                 var confirmation = _authorizationService.Consume(administratorId, authorization);
                 if (confirmation is null)
                 {
@@ -164,7 +368,7 @@ public sealed class RunOnceService : IDisposable
                         current.Revision);
                 }
 
-                var validation = Validate(current, request);
+                var validation = Validate(current, resolvedRequest);
                 if (validation.Operation is null)
                 {
                     return new RunOnceExecutionResult(
@@ -177,6 +381,7 @@ public sealed class RunOnceService : IDisposable
                 var operationMatches = string.Equals(
                     confirmation.OperationFingerprint,
                     RunOnceOperationFingerprint.Create(
+                        groupId,
                         validation.Operation,
                         validation.ExcludedItemIds),
                     StringComparison.Ordinal);
@@ -230,10 +435,45 @@ public sealed class RunOnceService : IDisposable
         }
     }
 
-    /// <inheritdoc />
-    public void Dispose()
+    private static RunOnceOperationRequest? ResolveRequest(
+        PluginConfiguration current,
+        RunOnceOperationRequest? transientRequest,
+        SavedRunOnceOperationRequest? savedRequest,
+        out Guid groupId)
     {
-        _operationLock.Dispose();
+        if (transientRequest is not null)
+        {
+            groupId = Guid.Empty;
+            return transientRequest;
+        }
+
+        groupId = savedRequest?.GroupId ?? Guid.Empty;
+        var selectedGroupId = groupId;
+        var group = (current.RunOnceGroups ?? [])
+            .SingleOrDefault(candidate => candidate.Id == selectedGroupId);
+        return group is null
+            ? null
+            : CreateOperationRequest(group, savedRequest?.ExcludedItemIds ?? []);
+    }
+
+    private static RunOnceOperationRequest CreateOperationRequest(
+        RunOnceGroupConfiguration group,
+        Guid[] excludedItemIds)
+    {
+        return new RunOnceOperationRequest
+        {
+            Target = group.Target,
+            Sources = group.Sources ?? [],
+            Policy = group.Policy,
+            ExcludedItemIds = excludedItemIds,
+        };
+    }
+
+    private static RunOnceValidationError MissingGroupError(Guid groupId)
+    {
+        return new RunOnceValidationError(
+            RunOnceValidationErrorCode.MissingGroup,
+            $"Saved run-once group {groupId:D} does not exist.");
     }
 
     private OperationValidation Validate(

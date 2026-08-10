@@ -21,12 +21,24 @@ internal static class RunOnceOperationFingerprint
         RunOnceOperation operation,
         IEnumerable<Guid> excludedItemIds)
     {
+        return Create(Guid.Empty, operation, excludedItemIds);
+    }
+
+    /// <summary>Creates one SHA-256 identity over a saved group identity and canonical operation content.</summary>
+    /// <param name="groupId">The selected persisted group identity.</param>
+    /// <param name="operation">The validated run-once operation.</param>
+    /// <param name="excludedItemIds">The normalized ephemeral exclusion set.</param>
+    /// <returns>The canonical selected-group identity.</returns>
+    public static string Create(
+        Guid groupId,
+        RunOnceOperation operation,
+        IEnumerable<Guid> excludedItemIds)
+    {
         var canonical = new StringBuilder();
+        Append(canonical, groupId.ToString("N", CultureInfo.InvariantCulture));
         Append(canonical, CreateNodeKey(operation.Target));
         Append(canonical, ((int)operation.Policy).ToString(CultureInfo.InvariantCulture));
-        foreach (var source in operation.Sources
-            .Select(CreateNodeKey)
-            .OrderBy(value => value, StringComparer.Ordinal))
+        foreach (var source in operation.Sources.Select(CreateNodeKey))
         {
             Append(canonical, source);
         }

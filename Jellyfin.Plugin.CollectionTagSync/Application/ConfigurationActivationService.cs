@@ -378,7 +378,7 @@ public sealed class ConfigurationActivationService : IDisposable
         IReadOnlyList<ReconciliationPlan> plans)
     {
         var nextRevision = checked(current.Revision + 1);
-        var accepted = CloneWithRevision(candidate, nextRevision, disableIsAcknowledged);
+        var accepted = CloneWithRevision(current, candidate, nextRevision, disableIsAcknowledged);
         _persistence.Save(accepted);
         var reconciliationId = _reconciliationDispatcher.Enqueue(
             nextRevision,
@@ -421,11 +421,13 @@ public sealed class ConfigurationActivationService : IDisposable
     }
 
     private static PluginConfiguration CloneWithRevision(
+        PluginConfiguration current,
         PluginConfiguration candidate,
         long revision,
         bool disableIsAcknowledged)
     {
         var accepted = PluginConfigurationCloner.Clone(candidate);
+        accepted.RunOnceGroups = PluginConfigurationCloner.Clone(current).RunOnceGroups;
         accepted.Revision = revision;
         accepted.DestructiveCircuitBreakerDisableAcknowledged = disableIsAcknowledged;
         accepted.PausedFullReconcile = null;

@@ -896,6 +896,39 @@ public sealed class ConfigurationActivationServiceTests
             timeProvider ?? TimeProvider.System);
     }
 
+    [Fact]
+    public async Task ContinuousConfigurationSaveCannotOverwriteSavedRunOnceGroups()
+    {
+        var groupId = new Guid("65739d50-977a-4aeb-a4b8-38421019b2f4");
+        var persistence = new RecordingConfigurationPersistence(new PluginConfiguration
+        {
+            Revision = 3,
+            RunOnceGroups =
+            [
+                new RunOnceGroupConfiguration
+                {
+                    Id = groupId,
+                    Target = Tag("Run target"),
+                    Sources = [Tag("Run source")],
+                    Policy = MappingPolicy.Additive,
+                },
+            ],
+        });
+        using var service = CreateService(
+            persistence,
+            new FixedCatalog([], []),
+            new FixedStateReader(),
+            new BackgroundReconciliationStatusStore());
+
+        var result = await service.ActivateAsync(
+            new PluginConfiguration { Revision = 3, MappingGroups = [] },
+            CancellationToken.None).ConfigureAwait(true);
+
+        Assert.Equal(ConfigurationActivationOutcome.Accepted, result.Outcome);
+        Assert.Equal(4, persistence.Current.Revision);
+        Assert.Equal(groupId, Assert.Single(persistence.Current.RunOnceGroups).Id);
+    }
+
     private static PluginConfiguration AuthoritativeCandidate(string target, string source)
     {
         return new PluginConfiguration

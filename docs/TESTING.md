@@ -211,6 +211,9 @@ Default boundary cases:
 | Config | Unresolved group passes observed target state to valid downstream groups |
 | Config | Unresolved warning persists until explicit repair or disable |
 | Run-once | Does not persist active graph edge |
+| Run-once | Saved group survives restart without becoming automatically active |
+| Run-once | Preview and execution are scoped to exactly one saved group |
+| Run-once | Successful execution leaves the saved group available for reuse |
 | Run-once | Remains available while continuous automatic mappings are active |
 | Run-once | Reverse/bootstrap path settles through active continuous DAG |
 | Run-once | Enabled continuous target conflict is rejected |
@@ -227,7 +230,7 @@ Default boundary cases:
 | Run-once | Excluded addition keeps current target false |
 | Run-once | Excluded removal keeps current target true |
 | Run-once | Exclusion recomputes cascades and cannot suppress them directly |
-| Run-once | Exclusions are authorization-bound and not persisted |
+| Run-once | Per-execution exclusions are authorization-bound and not persisted with the saved group |
 | Run-once | Created collection target uses returned GUID |
 | Preview | Includes item-level adds/removes |
 | Preview | Includes cascaded final state |
