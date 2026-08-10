@@ -61,8 +61,11 @@ async function signIn(page) {
 
 async function openPluginConfiguration(page) {
     await page.goto(`/web/#/dashboard/plugins/${pluginId.replaceAll('-', '')}?name=Collection%20Tag%20Sync`);
-    const settings = page.getByRole('link', { name: 'Settings' });
+    const settings = page.locator('#addPluginPage').getByRole('link', { name: 'Settings', exact: true });
     await expect(settings).toBeVisible();
+    await expect(settings).toHaveAttribute(
+        'href',
+        '#/configurationpage?name=Collection%20Tag%20Sync');
     await settings.click();
     await expect(page.locator('#collectionTagSyncPage')).toBeVisible();
 }

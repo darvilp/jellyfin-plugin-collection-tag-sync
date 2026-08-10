@@ -37,10 +37,10 @@ if [[ "${health_status}" != "healthy" ]]; then
     exit 3
 fi
 
-curl --fail --silent http://127.0.0.1:18096/health | rg --fixed-strings "Healthy" >/dev/null
+curl --fail --silent http://127.0.0.1:18096/health | grep --fixed-strings "Healthy" >/dev/null
 
 docker compose --project-directory "${project_root}" -f "${project_root}/compose.yaml" \
     logs --since 2m jellyfin \
-    | rg --fixed-strings "Loaded plugin: Collection Tag Sync"
+    | grep --fixed-strings "Loaded plugin: Collection Tag Sync"
 
 printf 'Installed Collection Tag Sync %s into the isolated Jellyfin server.\n' "${plugin_version}"
