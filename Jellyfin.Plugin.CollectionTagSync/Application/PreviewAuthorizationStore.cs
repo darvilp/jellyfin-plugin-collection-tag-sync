@@ -107,6 +107,23 @@ internal sealed class PreviewAuthorizationStore<TPayload>
         }
     }
 
+    /// <summary>Invalidates outstanding authorizations whose payload matches a predicate.</summary>
+    /// <param name="matches">The payload predicate.</param>
+    public void RemoveWhere(Predicate<TPayload> matches)
+    {
+        ArgumentNullException.ThrowIfNull(matches);
+        lock (_sync)
+        {
+            foreach (var key in _entries
+                .Where(pair => matches(pair.Value.Payload))
+                .Select(pair => pair.Key)
+                .ToArray())
+            {
+                _entries.Remove(key);
+            }
+        }
+    }
+
     private sealed record AuthorizationEntry(
         Guid AdministratorId,
         DateTimeOffset ExpiresAtUtc,

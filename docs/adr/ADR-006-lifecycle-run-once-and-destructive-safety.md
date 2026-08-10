@@ -4,6 +4,9 @@
 **Decision owner:** Project maintainer<br>
 **Review gate:** Must be Accepted before production coding
 
+**Amended 2026-08-09:** Persist reusable run-once groups while keeping every
+preview and execution independent.
+
 ## Context
 
 Mappings may be temporary, configuration changes may remove substantial metadata, and uninstall/disable behavior must be predictable.
@@ -11,9 +14,13 @@ Mappings may be temporary, configuration changes may remove substantial metadata
 ## Decision
 
 1. Continuous mappings are persisted and active until disabled/deleted.
-2. Run-once operations use the same planning semantics but do not persist a mapping.
-   They evaluate the active continuous baseline, apply the one-time target in the
-   plan, and then settle affected downstream continuous mappings.
+2. Run-once groups persist the same target, ordered sources, and policy shape as
+   mapping groups, but they never become active mappings and never participate
+   in automatic reconciliation or the continuous graph. Each preview and
+   execution operates on exactly one run-once group independently; groups are
+   never combined into a batch and remain saved after successful execution.
+   An operation evaluates the active continuous baseline, applies its one-time
+   target in the plan, and then settles affected downstream continuous mappings.
 3. Disabling or deleting a mapping preserves existing Jellyfin tags and collection memberships.
 4. Plugin uninstall preserves existing Jellyfin tags and collection memberships.
    These lifecycle actions remove or deactivate management only; they do not
@@ -94,6 +101,9 @@ Mappings may be temporary, configuration changes may remove substantial metadata
   the distinction between accepted configuration and settled metadata explicit.
 - Run-once operations can be tailored per item without introducing durable
   exceptions that continuous reconciliation would later need to honor.
+- Reusable run-once groups survive restart without becoming active
+  relationships. Independent execution keeps preview authorization, exclusions,
+  diagnostics, and background status scoped to one group.
 - Collection creation has an explicit lifecycle independent of mapping
   activation, avoiding surprising deletion of a collection that may already be
   in use.
@@ -108,8 +118,9 @@ Existing kid-approved tags remain.
 ```
 
 ```text
-Run once: kids-safe → Kids Safe collection.
-Result remains, but no continuous edge is stored.
+Saved run-once group: kids-safe → Kids Safe collection.
+Each execution runs that group independently. The result and reusable group
+remain, but no continuous edge is stored.
 ```
 
 ```text

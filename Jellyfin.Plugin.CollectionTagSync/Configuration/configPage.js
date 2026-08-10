@@ -2,6 +2,57 @@ const pluginId = '04920eee-c499-4b13-890f-7af0175f28f0';
 const addNewCollectionValue = '__add_new_collection__';
 const emptyGuid = '00000000-0000-0000-0000-000000000000';
 
+/**
+ * Treats Jellyfin's compact and hyphenated zero GUID wire forms as empty.
+ *
+ * @param {unknown} value possible GUID value
+ * @returns {boolean} whether the value is an all-zero GUID
+ */
+export function isEmptyGuid(value) {
+    const text = String(value ?? '').trim();
+    const compact = text.replaceAll('-', '').replace(/[{}()]/g, '');
+    return (compact.length === 32 && /^0{32}$/.test(compact))
+        || /^\{0x0{8},0x0{4},0x0{4},\{0x0{2}(?:,0x0{2}){7}\}\}$/i.test(text);
+}
+
+/**
+ * Normalizes both Jellyfin JSON enum names and editor numeric values.
+ * Unknown values throw so a future server enum cannot be silently rewritten.
+ *
+ * @param {unknown} value node-kind wire value
+ * @returns {0|1} normalized node kind
+ */
+export function normalizeNodeKind(value) {
+    if (value === 0 || value === '0' || value === 'Tag') {
+        return 0;
+    }
+
+    if (value === 1 || value === '1' || value === 'Collection') {
+        return 1;
+    }
+
+    throw new TypeError(`Unsupported mapping node kind: ${String(value)}`);
+}
+
+/**
+ * Normalizes both Jellyfin JSON enum names and editor numeric values.
+ * Unknown values throw so a future server enum cannot be silently rewritten.
+ *
+ * @param {unknown} value mapping-policy wire value
+ * @returns {0|1} normalized mapping policy
+ */
+export function normalizeMappingPolicy(value) {
+    if (value === 0 || value === '0' || value === 'Additive') {
+        return 0;
+    }
+
+    if (value === 1 || value === '1' || value === 'Authoritative') {
+        return 1;
+    }
+
+    throw new TypeError(`Unsupported mapping policy: ${String(value)}`);
+}
+
 function property(value, name, fallback = undefined) {
     if (value && value[name] !== undefined && value[name] !== null) {
         return value[name];
@@ -32,7 +83,7 @@ function escapeHtml(value) {
  */
 export function buildCollectionOptions(entries, selectedNode = null) {
     const configuredId = String(property(selectedNode, 'CollectionId', '') || '');
-    const selectedId = configuredId.toLowerCase() === emptyGuid ? '' : configuredId;
+    const selectedId = isEmptyGuid(configuredId) ? '' : configuredId;
     const selectedName = String(property(selectedNode, 'CollectionDisplayName', '') || '');
     const choices = [{ value: '', label: 'Select a collection…' }];
     const known = new Set();
@@ -213,7 +264,9 @@ export default function (view) {
         configurationPreviewPending: false,
         configurationMutationPending: false,
         configurationEditedDuringMutation: false,
+        runOnceGroups: [],
         runOnceExcludedIds: new Set(),
+        runOnceExclusionGroupId: null,
         latestFullReconcileId: null,
         queuedFullReconcileBaselineId: null,
         nextDynamicEditorId: 0,
@@ -263,9 +316,10 @@ export default function (view) {
     }
 
     function nodeEditorHtml(node, editorId, title, canRemove) {
-        const kind = Number(property(node, 'Kind', 0));
+        const kind = normalizeNodeKind(property(node, 'Kind', 0));
         const tagValue = String(property(node, 'TagValue', '') || '');
-        const collectionId = String(property(node, 'CollectionId', '') || '');
+        const configuredCollectionId = String(property(node, 'CollectionId', '') || '');
+        const collectionId = isEmptyGuid(configuredCollectionId) ? '' : configuredCollectionId;
         const collectionDisplayName = String(property(node, 'CollectionDisplayName', '') || '');
         const choices = buildCollectionOptions(state.collections, node)
             .map(option => optionHtml(option, collectionId))
@@ -299,7 +353,7 @@ export default function (view) {
     }
 
     function nodeSummaryLabel(node) {
-        if (Number(property(node, 'Kind', 0)) === 0) {
+        if (normalizeNodeKind(property(node, 'Kind', 0)) === 0) {
             const tagValue = String(property(node, 'TagValue', '') || '');
             return tagValue ? `Tag “${tagValue}”` : 'Tag (not selected)';
         }
@@ -311,7 +365,7 @@ export default function (view) {
             return `Collection “${property(entry, 'DisplayName', 'Unnamed collection')}”`;
         }
 
-        if (!collectionId || collectionId === emptyGuid) {
+        if (!collectionId || isEmptyGuid(collectionId)) {
             return 'Collection (not selected)';
         }
 
@@ -320,7 +374,7 @@ export default function (view) {
     }
 
     function nodeDisplayLabel(node) {
-        if (Number(property(node, 'Kind', 0)) === 0) {
+        if (normalizeNodeKind(property(node, 'Kind', 0)) === 0) {
             return `Tag "${property(node, 'TagValue', '')}"`;
         }
 
@@ -342,7 +396,7 @@ export default function (view) {
     }
 
     function mappingPolicyLabel(policy) {
-        return Number(policy) === 1 ? 'Authoritative' : 'Additive';
+        return normalizeMappingPolicy(policy) === 1 ? 'Authoritative' : 'Additive';
     }
 
     function renderMappingGroups(expandedGroupIndex = null) {
@@ -356,7 +410,7 @@ export default function (view) {
         container.innerHTML = groups.map((group, groupIndex) => {
             const target = property(group, 'Target', {});
             const sources = property(group, 'Sources', []) ?? [];
-            const policy = Number(property(group, 'Policy', 0));
+            const policy = normalizeMappingPolicy(property(group, 'Policy', 0));
             const enabled = Boolean(property(group, 'IsEnabled', false));
             return `
                 <details class="collectionTagSyncGroup" data-mapping-group
@@ -428,17 +482,68 @@ export default function (view) {
             .join('');
     }
 
-    function renderRunOnceEditor() {
-        query('#collectionTagSyncRunOnceTarget').innerHTML = nodeEditorHtml(
-            { Kind: 0, TagValue: '' },
-            'runOnceTarget',
-            'Target',
-            false);
-        query('#collectionTagSyncRunOnceSources').innerHTML = nodeEditorHtml(
-            { Kind: 0, TagValue: '' },
-            'runOnceSource0',
-            'Source 1',
-            true);
+    function renderRunOnceGroups(expandedGroupIndex = null) {
+        const container = query('#collectionTagSyncRunOnceGroups');
+        if (state.runOnceGroups.length === 0) {
+            container.innerHTML = '<p class="fieldDescription">No reusable run-once groups are saved.</p>';
+            return;
+        }
+
+        container.innerHTML = state.runOnceGroups.map((group, groupIndex) => {
+            const target = property(group, 'Target', {});
+            const sources = property(group, 'Sources', []) ?? [];
+            const policy = normalizeMappingPolicy(property(group, 'Policy', 0));
+            const groupId = String(property(group, 'Id', '') || '');
+            const isSaved = groupId && !isEmptyGuid(groupId);
+            const editorIsDirty = Boolean(property(group, 'EditorIsDirty', false));
+            return `
+                <details class="collectionTagSyncGroup" data-run-once-group
+                         data-group-id="${escapeHtml(isSaved ? groupId : '')}"
+                         data-editor-dirty="${editorIsDirty}"
+                         name="collectionTagSyncRunOnceEditors"${expandedGroupIndex === groupIndex ? ' open' : ''}>
+                    <summary class="collectionTagSyncGroupSummary" data-action="edit-run-once-group">
+                        <span class="collectionTagSyncMappingFlow" data-role="run-once-summary-flow">${escapeHtml(mappingSummaryLabel(group))}</span>
+                        <span class="collectionTagSyncMappingMeta">
+                            <span data-role="run-once-summary-policy">${mappingPolicyLabel(policy)}</span>
+                            <span aria-hidden="true"> · </span>
+                            <span data-role="run-once-summary-state">${isSaved && !editorIsDirty ? 'Saved' : 'Unsaved'}</span>
+                            <span class="collectionTagSyncEditLabel">Edit</span>
+                        </span>
+                    </summary>
+                    <div data-role="run-once-editor">
+                        <h3>${isSaved ? `Edit run-once group ${groupIndex + 1}` : 'Add run-once group'}</h3>
+                        <div data-role="run-once-target">
+                            ${nodeEditorHtml(target, `runOnce${groupIndex}Target`, 'Target', false)}
+                        </div>
+                        <h4>Sources</h4>
+                        <div data-role="run-once-sources">
+                            ${sources.map((source, sourceIndex) => nodeEditorHtml(
+                                source,
+                                `runOnce${groupIndex}Source${sourceIndex}`,
+                                `Source ${sourceIndex + 1}`,
+                                true)).join('')}
+                        </div>
+                        <button is="emby-button" type="button" class="raised button"
+                                data-action="add-run-once-source"><span>Add source</span></button>
+                        <div class="selectContainer">
+                            <label class="selectLabel" for="runOnce${groupIndex}Policy">Policy</label>
+                            <select is="emby-select" id="runOnce${groupIndex}Policy" data-field="policy"
+                                    class="emby-select-withcolor emby-select">
+                                <option value="0"${policy === 0 ? ' selected' : ''}>Additive — preserve manual target state</option>
+                                <option value="1"${policy === 1 ? ' selected' : ''}>Authoritative — remove unsupported target state</option>
+                            </select>
+                        </div>
+                        <div class="collectionTagSyncActions">
+                            <button is="emby-button" type="button" class="raised button-submit"
+                                    data-action="save-run-once-group"><span>Save group</span></button>
+                            <button is="emby-button" type="button" class="raised button"
+                                    data-action="preview-run-once"${isSaved && !editorIsDirty ? '' : ' disabled'}><span>Preview group</span></button>
+                            <button is="emby-button" type="button" class="raised button-warning"
+                                    data-action="delete-run-once-group"><span>Delete group</span></button>
+                        </div>
+                    </div>
+                </details>`;
+        }).join('');
     }
 
     function updateNodeVisibility(editor) {
@@ -514,11 +619,26 @@ export default function (view) {
         };
     }
 
-    function readRunOnceOperation() {
+    function readRunOnceGroup(group) {
         return {
-            Target: readNode(query('#collectionTagSyncRunOnceTarget [data-node-editor]')),
-            Sources: queryAll('#collectionTagSyncRunOnceSources [data-node-editor]').map(readNode),
-            Policy: Number(query('#collectionTagSyncRunOncePolicy').value),
+            Id: group.dataset.groupId || emptyGuid,
+            Target: readNode(group.querySelector('[data-role="run-once-target"] [data-node-editor]')),
+            Sources: [...group.querySelectorAll('[data-role="run-once-sources"] [data-node-editor]')]
+                .map(readNode),
+            Policy: Number(group.querySelector('[data-field="policy"]').value)
+        };
+    }
+
+    function readRunOnceEditorGroup(group) {
+        return {
+            ...readRunOnceGroup(group),
+            EditorIsDirty: group.dataset.editorDirty === 'true'
+        };
+    }
+
+    function readRunOnceOperation(group) {
+        return {
+            GroupId: group.dataset.groupId,
             ExcludedItemIds: [...state.runOnceExcludedIds]
         };
     }
@@ -534,6 +654,19 @@ export default function (view) {
         state.configuration = { ...state.configuration, MappingGroups: candidate.MappingGroups };
         renderMappingGroups(candidate.MappingGroups.length - 1);
         configurationChanged();
+    }
+
+    function addRunOnceGroup() {
+        const groups = queryAll('[data-run-once-group]').map(readRunOnceEditorGroup);
+        groups.push({
+            Id: emptyGuid,
+            Target: { Kind: 0, TagValue: '', CollectionId: emptyGuid, CollectionDisplayName: '' },
+            Sources: [{ Kind: 0, TagValue: '', CollectionId: emptyGuid, CollectionDisplayName: '' }],
+            Policy: 0
+        });
+        state.runOnceGroups = groups;
+        renderRunOnceGroups(groups.length - 1);
+        runOnceChanged(null);
     }
 
     function addSource(container, prefix) {
@@ -648,14 +781,43 @@ export default function (view) {
             : 'Disabled';
     }
 
-    function runOnceChanged(clearExclusions = true) {
+    function updateRunOnceSummary(changedElement) {
+        const group = changedElement?.closest('[data-run-once-group]');
+        if (!group) {
+            return;
+        }
+
+        const operation = readRunOnceGroup(group);
+        group.querySelector('[data-role="run-once-summary-flow"]').textContent = mappingSummaryLabel(operation);
+        group.querySelector('[data-role="run-once-summary-policy"]').textContent = mappingPolicyLabel(operation.Policy);
+        group.querySelector('[data-role="run-once-summary-state"]').textContent =
+            group.dataset.editorDirty === 'true' || !group.dataset.groupId ? 'Unsaved' : 'Saved';
+    }
+
+    function clearRunOnceExclusions() {
+        state.runOnceExcludedIds.clear();
+        state.runOnceExclusionGroupId = null;
+    }
+
+    function runOnceChanged(changedElement = null, clearExclusions = true) {
         if (clearExclusions) {
-            state.runOnceExcludedIds.clear();
+            clearRunOnceExclusions();
+        }
+
+        const group = changedElement?.closest?.('[data-run-once-group]');
+        if (group) {
+            group.dataset.editorDirty = 'true';
+            updateRunOnceSummary(group);
         }
 
         runOnceGuard.changed();
         query('[data-action="confirm-run-once"]').hidden = true;
-        setStatus('#collectionTagSyncRunOnceStatus', 'The operation changed. Preview again before running.', 'Warning');
+        setStatus(
+            '#collectionTagSyncRunOnceStatus',
+            group
+                ? 'The group changed. Save it before previewing.'
+                : 'The operation changed. Preview again before running.',
+            'Warning');
     }
 
     function updateCircuitBreakerWarning() {
@@ -898,13 +1060,83 @@ export default function (view) {
         }
     }
 
-    async function previewRunOnce() {
-        const operation = readRunOnceOperation();
+    async function saveRunOnceGroup(group) {
+        const candidate = readRunOnceGroup(group);
+        setStatus('#collectionTagSyncRunOnceStatus', 'Validating and saving the group…');
+        try {
+            const result = await requestJson(
+                apiClient,
+                'POST',
+                'CollectionTagSync/RunOnce/Groups',
+                candidate);
+            const saved = property(result, 'Group', null);
+            if (!saved) {
+                throw new Error('The server did not return the saved group.');
+            }
+
+            const groups = queryAll('[data-run-once-group]').map(readRunOnceEditorGroup);
+            const index = queryAll('[data-run-once-group]').indexOf(group);
+            groups[index] = { ...saved, EditorIsDirty: false };
+            state.runOnceGroups = groups;
+            runOnceGuard.changed();
+            clearRunOnceExclusions();
+            query('[data-action="confirm-run-once"]').hidden = true;
+            renderRunOnceGroups(index);
+            setStatus('#collectionTagSyncRunOnceStatus', 'Run-once group saved.', 'Success');
+        } catch (error) {
+            renderServerMessages(
+                '#collectionTagSyncRunOnceStatus',
+                responsePayload(error),
+                'The server could not save this run-once group.');
+        }
+    }
+
+    async function deleteRunOnceGroup(group) {
+        const groupId = group.dataset.groupId;
+        try {
+            if (groupId) {
+                await requestJson(
+                    apiClient,
+                    'DELETE',
+                    `CollectionTagSync/RunOnce/Groups/${encodeURIComponent(groupId)}`);
+            }
+
+            state.runOnceGroups = queryAll('[data-run-once-group]')
+                .filter(candidate => candidate !== group)
+                .map(readRunOnceEditorGroup);
+            runOnceGuard.changed();
+            clearRunOnceExclusions();
+            query('[data-action="confirm-run-once"]').hidden = true;
+            renderRunOnceGroups();
+            setStatus('#collectionTagSyncRunOnceStatus', 'Run-once group deleted.', 'Success');
+        } catch (error) {
+            renderServerMessages(
+                '#collectionTagSyncRunOnceStatus',
+                responsePayload(error),
+                'The server could not delete this run-once group.');
+        }
+    }
+
+    async function previewRunOnce(group) {
+        if (!group?.dataset.groupId || group.dataset.editorDirty === 'true') {
+            setStatus('#collectionTagSyncRunOnceStatus', 'Save the group before previewing it.', 'Warning');
+            return;
+        }
+
+        const groupId = group.dataset.groupId;
+        if (state.runOnceExclusionGroupId && state.runOnceExclusionGroupId !== groupId) {
+            clearRunOnceExclusions();
+        }
+
+        const operation = readRunOnceOperation(group);
+        runOnceGuard.changed();
+        query('[data-action="confirm-run-once"]').hidden = true;
         setStatus('#collectionTagSyncRunOnceStatus', 'Calculating the server preview…');
         try {
             const result = await requestJson(apiClient, 'POST', 'CollectionTagSync/RunOnce/Preview', operation);
             const authorization = property(result, 'Authorization', null);
             runOnceGuard.remember({ Authorization: property(authorization, 'Authorization', ''), Operation: operation });
+            state.runOnceExclusionGroupId = groupId;
             renderPlanPreview(
                 '#collectionTagSyncRunOncePreview',
                 authorization,
@@ -913,6 +1145,7 @@ export default function (view) {
             setStatus('#collectionTagSyncRunOnceStatus', 'Preview ready. Review it before running.', 'Success');
         } catch (error) {
             runOnceGuard.changed();
+            clearRunOnceExclusions();
             query('[data-action="confirm-run-once"]').hidden = true;
             renderServerMessages(
                 '#collectionTagSyncRunOnceStatus',
@@ -953,6 +1186,8 @@ export default function (view) {
                     ? messages.join(' ')
                     : 'The preview expired or the operation, exclusions, active revision, or removal set changed. Preview again.',
                 'Warning');
+        } finally {
+            clearRunOnceExclusions();
         }
     }
 
@@ -1182,7 +1417,7 @@ export default function (view) {
                 editor.dataset.collectionDisplayName = displayName;
             }
             if (session.select.closest('#collectionTagSyncRunOnce')) {
-                runOnceChanged();
+                runOnceChanged(session.select);
             } else {
                 updateMappingSummary(session.select);
                 configurationChanged();
@@ -1262,18 +1497,20 @@ export default function (view) {
 
         dashboard.showLoadingMsg();
         try {
-            const [configuration, collections, tags] = await Promise.all([
+            const [configuration, collections, tags, runOnceGroups] = await Promise.all([
                 apiClient.getPluginConfiguration(pluginId),
                 requestJson(apiClient, 'GET', 'CollectionTagSync/Collections/Picker'),
-                requestJson(apiClient, 'GET', 'CollectionTagSync/Tags/Picker')
+                requestJson(apiClient, 'GET', 'CollectionTagSync/Tags/Picker'),
+                requestJson(apiClient, 'GET', 'CollectionTagSync/RunOnce/Groups')
             ]);
             state.configuration = configuration;
             state.collections = collections ?? [];
             state.tags = tags ?? [];
+            state.runOnceGroups = Array.isArray(runOnceGroups) ? runOnceGroups : [];
             renderTagChoices();
             renderMappingGroups();
             renderSettings();
-            renderRunOnceEditor();
+            renderRunOnceGroups();
             state.loaded = true;
             await Promise.all([refreshFullReconcileStatus(), refreshOperationalStatus()]);
         } catch {
@@ -1300,6 +1537,19 @@ export default function (view) {
             return;
         }
 
+        const runOnceSummary = event.target.closest('summary[data-action="edit-run-once-group"]');
+        if (runOnceSummary && view.contains(runOnceSummary)) {
+            event.preventDefault();
+            const selectedGroup = runOnceSummary.closest('[data-run-once-group]');
+            const shouldOpen = !selectedGroup.open;
+            for (const group of queryAll('[data-run-once-group]')) {
+                group.open = false;
+            }
+
+            selectedGroup.open = shouldOpen;
+            return;
+        }
+
         const button = event.target.closest('button[data-action]');
         if (!button || !view.contains(button)) {
             return;
@@ -1308,6 +1558,9 @@ export default function (view) {
         switch (button.dataset.action) {
             case 'add-mapping':
                 addMappingGroup();
+                break;
+            case 'add-run-once-group':
+                addRunOnceGroup();
                 break;
             case 'remove-mapping':
                 button.closest('[data-mapping-group]').remove();
@@ -1325,7 +1578,7 @@ export default function (view) {
                 const isRunOnce = Boolean(button.closest('#collectionTagSyncRunOnce'));
                 button.closest('[data-node-editor]').remove();
                 if (isRunOnce) {
-                    runOnceChanged();
+                    runOnceChanged(button);
                 } else {
                     updateMappingSummary(group);
                     configurationChanged();
@@ -1342,11 +1595,19 @@ export default function (view) {
                 await confirmConfiguration();
                 break;
             case 'add-run-once-source':
-                addSource(query('#collectionTagSyncRunOnceSources'), 'runOnceSource');
-                runOnceChanged();
+                addSource(
+                    button.closest('[data-run-once-group]').querySelector('[data-role="run-once-sources"]'),
+                    'runOnceSource');
+                runOnceChanged(button);
+                break;
+            case 'save-run-once-group':
+                await saveRunOnceGroup(button.closest('[data-run-once-group]'));
                 break;
             case 'preview-run-once':
-                await previewRunOnce();
+                await previewRunOnce(button.closest('[data-run-once-group]'));
+                break;
+            case 'delete-run-once-group':
+                await deleteRunOnceGroup(button.closest('[data-run-once-group]'));
                 break;
             case 'confirm-run-once':
                 await confirmRunOnce();
@@ -1397,7 +1658,7 @@ export default function (view) {
             } else {
                 state.runOnceExcludedIds.delete(itemId);
             }
-            runOnceChanged(false);
+            runOnceChanged(null, false);
             return;
         }
 
@@ -1406,7 +1667,7 @@ export default function (view) {
         }
 
         if (target.closest('#collectionTagSyncRunOnce')) {
-            runOnceChanged();
+            runOnceChanged(target);
         } else if (target.closest('#collectionTagSyncMappings')
             || target.closest('#collectionTagSyncReconciliationSafety')) {
             if (target.closest('#collectionTagSyncMappings')) {
@@ -1430,7 +1691,7 @@ export default function (view) {
         }
 
         if (event.target.closest('#collectionTagSyncRunOnce')) {
-            runOnceChanged();
+            runOnceChanged(event.target);
         } else if (event.target.closest('#collectionTagSyncMappings')
             || event.target.closest('#collectionTagSyncReconciliationSafety')) {
             if (event.target.closest('#collectionTagSyncMappings')) {

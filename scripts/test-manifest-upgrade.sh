@@ -234,6 +234,7 @@ if [[ "${active_revision}" -le 0 ]]; then
 fi
 
 assert_sentinel_configuration() {
+    local require_run_once_groups="${1:-false}"
     local configuration
     configuration="$(curl --fail --silent \
         --header "X-Emby-Token: ${access_token}" \
@@ -242,6 +243,7 @@ assert_sentinel_configuration() {
         --argjson revision "${active_revision}" \
         --arg collection_id "${sentinel_collection_id}" \
         --arg collection_name "${sentinel_collection_name}" \
+        --argjson require_run_once_groups "${require_run_once_groups}" \
         '.SchemaVersion == 1
          and .Revision == $revision
          and .StartupReconcileDelayMinutes == 17
@@ -260,7 +262,10 @@ assert_sentinel_configuration() {
          and .MappingGroups[0].Sources[1].Kind == "Tag"
          and .MappingGroups[0].Sources[1].TagValue == "Upgrade-Sentinel-Source-B"
          and .MappingGroups[0].Policy == "Authoritative"
-         and .MappingGroups[0].IsEnabled == false' \
+         and .MappingGroups[0].IsEnabled == false
+         and (($require_run_once_groups == false)
+              or (has("RunOnceGroups") and (.RunOnceGroups | type) == "array"
+                  and (.RunOnceGroups | length) == 0))' \
         <<<"${configuration}" >/dev/null; then
         printf 'Sentinel configuration was not retained: %s\n' "${configuration}" >&2
         exit 7
@@ -274,7 +279,7 @@ assert_sentinel_configuration
     "${candidate_package}"
 assert_catalog_version "${candidate_version}"
 install_catalog_version "${candidate_version}"
-assert_sentinel_configuration
+assert_sentinel_configuration true
 
 printf 'Upgraded Collection Tag Sync %s to %s through the Jellyfin catalog with configuration revision %s retained.\n' \
     "${previous_version}" "${candidate_version}" "${active_revision}"

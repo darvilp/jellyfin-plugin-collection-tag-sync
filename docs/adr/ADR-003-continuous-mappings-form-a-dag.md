@@ -23,8 +23,9 @@ Removing either side causes the other side to restore it during the next reconci
 2. Direct and indirect cycles are rejected before configuration activation.
 3. Validation returns the discovered cycle path.
 4. Disabled groups do not participate in the active graph.
-5. Run-once operations are not persisted and do not become continuous graph
-   edges.
+5. Run-once groups are persisted reusable definitions, but they never become
+   continuous graph edges. Each run-once operation executes exactly one group
+   independently.
 6. A run-once operation is planned in stages:
    - evaluate the active continuous DAG to establish baseline effective state;
    - evaluate the one-time target;

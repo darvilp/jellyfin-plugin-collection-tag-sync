@@ -9,9 +9,47 @@ verify_release="${project_root}/scripts/verify-release-contract.sh"
 prepare_assets="${project_root}/scripts/prepare-release-assets.sh"
 verify_history="${project_root}/scripts/verify-manifest-history.sh"
 workflow_path="${project_root}/.github/workflows/release.yml"
+browser_e2e="${project_root}/scripts/test-browser-e2e.sh"
 read_build_metadata="${project_root}/scripts/read-build-metadata.sh"
 temp_root="$(mktemp -d /tmp/collection-tag-sync-release-test.XXXXXX)"
 trap 'rm -rf -- "${temp_root}"' EXIT
+
+identity_probe_bin="${temp_root}/identity-probe-bin"
+mkdir -p "${identity_probe_bin}"
+printf '%s\n' \
+    '#!/bin/sh' \
+    'printf "%s:%s\n" "${JFTS_UID:-unset}" "${JFTS_GID:-unset}" >"${JFTS_IDENTITY_CAPTURE}"' \
+    'exit 91' \
+    >"${identity_probe_bin}/bash"
+chmod +x "${identity_probe_bin}/bash"
+
+default_identity_capture="${temp_root}/default-identity.txt"
+if env -u JFTS_UID -u JFTS_GID \
+    PATH="${identity_probe_bin}:${PATH}" \
+    JFTS_E2E_KEEP_SERVER=1 \
+    JFTS_IDENTITY_CAPTURE="${default_identity_capture}" \
+    /bin/bash "${browser_e2e}" >/dev/null 2>&1; then
+    printf 'Expected the identity probe to stop the browser entrypoint.\n' >&2
+    exit 1
+else
+    test "$?" -eq 91
+fi
+test "$(<"${default_identity_capture}")" = "$(id -u):$(id -g)"
+
+override_identity_capture="${temp_root}/override-identity.txt"
+if env \
+    PATH="${identity_probe_bin}:${PATH}" \
+    JFTS_UID=3456 \
+    JFTS_GID=4567 \
+    JFTS_E2E_KEEP_SERVER=1 \
+    JFTS_IDENTITY_CAPTURE="${override_identity_capture}" \
+    /bin/bash "${browser_e2e}" >/dev/null 2>&1; then
+    printf 'Expected the identity probe to stop the browser entrypoint.\n' >&2
+    exit 1
+else
+    test "$?" -eq 91
+fi
+test "$(<"${override_identity_capture}")" = '3456:4567'
 
 version="$("${read_build_metadata}" version)"
 upgrade_from="$("${read_build_metadata}" upgradeFrom)"

@@ -23,13 +23,19 @@ public sealed class RunOnceControllerContractTests
     }
 
     [Fact]
-    public void PreviewConfirmationAndStatusActionsHaveExplicitRoutes()
+    public void GroupCrudPreviewConfirmationAndStatusActionsHaveExplicitRoutes()
     {
         var methods = typeof(RunOnceController).GetMethods(BindingFlags.Instance | BindingFlags.Public);
+        var getGroups = Assert.Single(methods, method => method.Name == "GetGroups");
+        var saveGroup = Assert.Single(methods, method => method.Name == "SaveGroupAsync");
+        var deleteGroup = Assert.Single(methods, method => method.Name == "DeleteGroupAsync");
         var preview = Assert.Single(methods, method => method.Name == "PreviewAsync");
         var confirm = Assert.Single(methods, method => method.Name == "ConfirmAsync");
         var status = Assert.Single(methods, method => method.Name == "GetReconciliationStatus");
 
+        Assert.Equal("Groups", getGroups.GetCustomAttribute<HttpGetAttribute>()?.Template);
+        Assert.Equal("Groups", saveGroup.GetCustomAttribute<HttpPostAttribute>()?.Template);
+        Assert.Equal("Groups/{id:guid}", deleteGroup.GetCustomAttribute<HttpDeleteAttribute>()?.Template);
         Assert.Equal("Preview", preview.GetCustomAttribute<HttpPostAttribute>()?.Template);
         Assert.Equal("Confirm", confirm.GetCustomAttribute<HttpPostAttribute>()?.Template);
         Assert.Equal(

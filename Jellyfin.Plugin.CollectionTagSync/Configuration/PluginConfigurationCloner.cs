@@ -29,6 +29,26 @@ internal static class PluginConfigurationCloner
                 .Where(group => group is not null)
                 .Select(CloneGroup)
                 .ToArray(),
+            RunOnceGroups = (source.RunOnceGroups ?? [])
+                .Where(group => group is not null)
+                .Select(CloneRunOnceGroup)
+                .ToArray(),
+        };
+    }
+
+    /// <summary>
+    /// Clones one reusable run-once group.
+    /// </summary>
+    /// <param name="group">The source group.</param>
+    /// <returns>An independent deep clone.</returns>
+    public static RunOnceGroupConfiguration CloneRunOnceGroup(RunOnceGroupConfiguration group)
+    {
+        return new RunOnceGroupConfiguration
+        {
+            Id = group.Id,
+            Target = MappingNodeConfigurationMapper.Clone(group.Target),
+            Sources = (group.Sources ?? []).Select(MappingNodeConfigurationMapper.Clone).ToArray(),
+            Policy = group.Policy,
         };
     }
 

@@ -5,6 +5,9 @@ namespace Jellyfin.Plugin.CollectionTagSync.Application;
 /// </summary>
 public enum RunOnceValidationErrorCode
 {
+    /// <summary>The selected persisted group does not exist.</summary>
+    MissingGroup,
+
     /// <summary>The mapping-shaped operation is invalid.</summary>
     InvalidOperation,
 
