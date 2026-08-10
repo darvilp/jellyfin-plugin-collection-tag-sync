@@ -8,6 +8,14 @@
         "category": "General",
         "versions": [
             {
+                "version": "0.2.0.0",
+                "changelog": "Third alpha with persistent reusable run-once groups, independent preview and execution, correct saved enum hydration, zero-GUID picker handling, and a Docker-backed Playwright administrator workflow gate.\n",
+                "targetAbi": "10.11.11.0",
+                "sourceUrl": "https://github.com/darvilp/jellyfin-plugin-collection-tag-sync/releases/download/v0.2.0.0/Jellyfin.Plugin.CollectionTagSync_0.2.0.0.zip",
+                "checksum": "c0c29c909e5885434bac354005dc44e8",
+                "timestamp": "2026-08-10T07:15:36Z"
+            },
+            {
                 "version": "0.1.1.0",
                 "changelog": "Second alpha with title-first previews, a clearer configuration workflow, compact source-to-target mappings, separated global safety settings, focused collection creation, and locked preservation of explicitly requested names.\n",
                 "targetAbi": "10.11.11.0",
