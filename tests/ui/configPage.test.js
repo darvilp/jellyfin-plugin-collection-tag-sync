@@ -2,11 +2,15 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import test from 'node:test';
 
-import createPageController from '../../Jellyfin.Plugin.CollectionTagSync/Configuration/configPage.js';
+import createPageController, {
+    buildCollectionOptions,
+    isEmptyGuid
+} from '../../Jellyfin.Plugin.CollectionTagSync/Configuration/configPage.js';
 
 const directItemId = '11111111-1111-1111-1111-111111111111';
 const cascadeItemId = '22222222-2222-2222-2222-222222222222';
 const emptyGuid = '00000000-0000-0000-0000-000000000000';
+const compactEmptyGuid = '00000000000000000000000000000000';
 
 class FakeClassList {
     values = new Set();
@@ -116,9 +120,10 @@ class FakeView {
         this.listeners = new Map();
         this.elements = new Map();
         this.mappingGroups = [];
-        this.targetEditor = new FakeNodeEditor('Kid-Approved');
-        this.sourceEditor = new FakeNodeEditor('Waltney');
-        this.elements.set('#collectionTagSyncRunOncePolicy', new FakeElement({ value: '0' }));
+        const runOnce = editableRunOnceGroup();
+        this.runOnceGroups = [runOnce.group];
+        this.targetEditor = runOnce.target;
+        this.sourceEditor = runOnce.source;
         this.elements.set('[data-action="save-configuration"]', new FakeElement());
         const confirmConfiguration = new FakeElement();
         confirmConfiguration.hidden = true;
@@ -137,10 +142,6 @@ class FakeView {
     }
 
     querySelector(selector) {
-        if (selector === '#collectionTagSyncRunOnceTarget [data-node-editor]') {
-            return this.targetEditor;
-        }
-
         if (!this.elements.has(selector)) {
             this.elements.set(selector, new FakeElement());
         }
@@ -153,8 +154,8 @@ class FakeView {
             return this.mappingGroups;
         }
 
-        if (selector === '#collectionTagSyncRunOnceSources [data-node-editor]') {
-            return [this.sourceEditor];
+        if (selector === '[data-run-once-group]') {
+            return this.runOnceGroups;
         }
 
         return [];
@@ -167,8 +168,18 @@ class FakeView {
     }
 }
 
-function button(action) {
-    return new FakeElement({ dataset: { action } });
+function button(action, group = null) {
+    return new FakeElement({
+        dataset: { action },
+        closest: group ? {
+            '[data-run-once-group]': group,
+            '#collectionTagSyncRunOnce': {}
+        } : {}
+    });
+}
+
+function runOnceButton(view, action) {
+    return button(action, view.runOnceGroups[0]);
 }
 
 function exclusion(itemId, checked) {
@@ -238,6 +249,43 @@ function editableMappingGroup({ collectionTarget = false } = {}) {
         ? sources
         : [];
     return { enabled, flow, group, policy, policySummary, source, sources, stateSummary, target };
+}
+
+function editableRunOnceGroup({ id = '33333333-3333-3333-3333-333333333333' } = {}) {
+    const group = new FakeElement({ dataset: { groupId: id } });
+    const target = new FakeNodeEditor('Kid-Approved');
+    const source = new FakeNodeEditor('Waltney');
+    const sources = [source];
+    const sourcesContainer = new FakeElement();
+    sourcesContainer.querySelectorAll = selector => selector === '[data-node-editor]' ? sources : [];
+    sourcesContainer.insertAdjacentHTML = () => {
+        sources.push(new FakeNodeEditor(''));
+    };
+    const policy = new FakeElement({ value: '0' });
+    const flow = new FakeElement();
+    const policySummary = new FakeElement();
+    const stateSummary = new FakeElement();
+    const runOnceClosest = {
+        '[data-run-once-group]': group,
+        '#collectionTagSyncRunOnce': {}
+    };
+    for (const element of [group, target, target.kind, target.tag, target.collection, source, source.kind,
+        source.tag, source.collection, policy]) {
+        element.closestValues = { ...element.closestValues, ...runOnceClosest };
+    }
+    source.remove = () => sources.splice(sources.indexOf(source), 1);
+    group.querySelector = selector => ({
+        '[data-role="run-once-target"] [data-node-editor]': target,
+        '[data-role="run-once-sources"]': sourcesContainer,
+        '[data-field="policy"]': policy,
+        '[data-role="run-once-summary-flow"]': flow,
+        '[data-role="run-once-summary-policy"]': policySummary,
+        '[data-role="run-once-summary-state"]': stateSummary
+    })[selector] ?? new FakeElement();
+    group.querySelectorAll = selector => selector === '[data-role="run-once-sources"] [data-node-editor]'
+        ? sources
+        : [];
+    return { flow, group, policy, policySummary, source, sources, stateSummary, target };
 }
 
 function runOncePreview({
@@ -357,8 +405,195 @@ test('fresh collection nodes render the empty picker prompt instead of an unreso
     await view.dispatch('click', button('add-mapping'));
 
     const rendered = view.querySelector('#collectionTagSyncMappingGroups').innerHTML;
-    assert.match(rendered, /<option value="">Select a collection…<\/option>/);
+    assert.match(rendered, /<option value=""(?: selected)?>Select a collection…<\/option>/);
     assert.doesNotMatch(rendered, new RegExp(`Missing collection.*${emptyGuid}`));
+});
+
+test('every canonical all-zero GUID format means no selected collection', () => {
+    const canonicalZeroGuids = [
+        emptyGuid,
+        compactEmptyGuid,
+        compactEmptyGuid.toUpperCase(),
+        `{${emptyGuid}}`,
+        `(${emptyGuid})`,
+        '{0x00000000,0x0000,0x0000,{0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00}}'
+    ];
+    for (const collectionId of canonicalZeroGuids) {
+        assert.equal(isEmptyGuid(collectionId), true);
+        const choices = buildCollectionOptions([], {
+            CollectionId: collectionId,
+            CollectionDisplayName: 'Should not render'
+        });
+
+        assert.equal(choices[0].value, '');
+        assert.doesNotMatch(
+            choices.map(choice => choice.label).join('\n'),
+            /Missing collection|Should not render|00000000/);
+    }
+
+    assert.equal(isEmptyGuid('{00000000-0000-0000-0000-000000000001}'), false);
+});
+
+test('server-shaped string enums render the saved mapping kind and policy without reinterpretation', async () => {
+    const configuration = {
+        SchemaVersion: 1,
+        MappingGroups: [{
+            Target: {
+                Kind: 'Tag',
+                TagValue: 'Browser Target',
+                CollectionId: compactEmptyGuid,
+                CollectionDisplayName: ''
+            },
+            Sources: [{
+                Kind: 'Tag',
+                TagValue: 'Browser Source',
+                CollectionId: compactEmptyGuid,
+                CollectionDisplayName: ''
+            }],
+            Policy: 'Authoritative',
+            IsEnabled: false
+        }]
+    };
+    const { view } = createHarness(async path => path.endsWith('/Picker') ? [] : {}, configuration);
+
+    await view.dispatch('viewshow');
+
+    const rendered = view.querySelector('#collectionTagSyncMappingGroups').innerHTML;
+    assert.match(rendered, /Tag “Browser Source” → Tag “Browser Target”/);
+    assert.match(rendered, /data-role="mapping-summary-policy">Authoritative</);
+    assert.match(rendered, /<option value="0" selected>Tag<\/option>/);
+    assert.match(rendered, /<option value="1" selected>Authoritative/);
+    assert.doesNotMatch(rendered, /Missing collection|00000000000000000000000000000000/);
+});
+
+test('saved run-once groups render as independent collapsed source-to-target cards', async () => {
+    const firstId = '33333333-3333-3333-3333-333333333333';
+    const secondId = '44444444-4444-4444-4444-444444444444';
+    const { view } = createHarness(async path => {
+        if (path === 'CollectionTagSync/RunOnce/Groups') {
+            return [{
+                Id: firstId,
+                Target: { Kind: 'Tag', TagValue: 'Target A' },
+                Sources: [{ Kind: 'Tag', TagValue: 'Source A' }],
+                Policy: 'Additive'
+            }, {
+                Id: secondId,
+                Target: { Kind: 'Tag', TagValue: 'Target B' },
+                Sources: [{ Kind: 'Tag', TagValue: 'Source B' }],
+                Policy: 'Authoritative'
+            }];
+        }
+
+        return path.endsWith('/Picker') ? [] : {};
+    });
+
+    await view.dispatch('viewshow');
+
+    const rendered = view.querySelector('#collectionTagSyncRunOnceGroups').innerHTML;
+    assert.equal([...rendered.matchAll(/data-run-once-group/g)].length, 2);
+    assert.doesNotMatch(rendered, /<details[^>]*\sopen(?:\s|>)/);
+    assert.match(rendered, /Tag “Source A” → Tag “Target A”/);
+    assert.match(rendered, /Tag “Source B” → Tag “Target B”/);
+    assert.match(rendered, /Additive[\s\S]*Saved/);
+    assert.match(rendered, /Authoritative[\s\S]*Saved/);
+    assert.match(rendered, new RegExp(`data-group-id="${firstId}"`));
+    assert.match(rendered, new RegExp(`data-group-id="${secondId}"`));
+    assert.match(rendered, /data-action="save-run-once-group"/);
+    assert.match(rendered, /data-action="preview-run-once"/);
+    assert.match(rendered, /data-action="delete-run-once-group"/);
+});
+
+test('run-once preview submits only the selected saved group identity', async () => {
+    const first = editableRunOnceGroup({ id: '33333333-3333-3333-3333-333333333333' });
+    const second = editableRunOnceGroup({ id: '44444444-4444-4444-4444-444444444444' });
+    const { calls, view } = createHarness(async path =>
+        path === 'CollectionTagSync/RunOnce/Preview' ? runOncePreview() : {});
+    view.runOnceGroups = [first.group, second.group];
+
+    await view.dispatch('click', button('preview-run-once', second.group));
+
+    const request = calls.find(call => call.path === 'CollectionTagSync/RunOnce/Preview');
+    assert.deepEqual(request.body, {
+        GroupId: second.group.dataset.groupId,
+        ExcludedItemIds: []
+    });
+    assert.doesNotMatch(JSON.stringify(request.body), new RegExp(first.group.dataset.groupId));
+});
+
+test('editing a saved run-once group marks its compact card unsaved and blocks preview', async () => {
+    const { calls, view } = createHarness();
+    const group = view.runOnceGroups[0];
+
+    view.sourceEditor.tag.value = 'Edited source';
+    await view.dispatch('input', view.sourceEditor.tag);
+    await view.dispatch('click', button('preview-run-once', group));
+
+    assert.equal(group.dataset.editorDirty, 'true');
+    assert.equal(group.querySelector('[data-role="run-once-summary-state"]').textContent, 'Unsaved');
+    assert.match(group.querySelector('[data-role="run-once-summary-flow"]').textContent, /Edited source/);
+    assert.equal(calls.filter(call => call.path === 'CollectionTagSync/RunOnce/Preview').length, 0);
+    assert.match(view.querySelector('#collectionTagSyncRunOnceStatus').textContent, /save the group/i);
+});
+
+test('run-once group save and delete use the independent persistence endpoints', async () => {
+    const createdId = '55555555-5555-5555-5555-555555555555';
+    const { calls, view } = createHarness(async (path, method, body) => {
+        if (path === 'CollectionTagSync/RunOnce/Groups' && method === 'POST') {
+            return { Outcome: 'Saved', Group: { ...body, Id: createdId } };
+        }
+
+        return {};
+    });
+    const unsaved = editableRunOnceGroup({ id: '' });
+    view.runOnceGroups = [unsaved.group];
+
+    await view.dispatch('click', button('save-run-once-group', unsaved.group));
+
+    const save = calls.find(call => call.path === 'CollectionTagSync/RunOnce/Groups');
+    assert.equal(save.method, 'POST');
+    assert.equal(save.body.Id, emptyGuid);
+    assert.equal(save.body.Target.TagValue, 'Kid-Approved');
+    assert.deepEqual(save.body.Sources.map(source => source.TagValue), ['Waltney']);
+    assert.equal(save.body.Policy, 0);
+
+    const saved = editableRunOnceGroup({ id: createdId });
+    view.runOnceGroups = [saved.group];
+    await view.dispatch('click', button('delete-run-once-group', saved.group));
+
+    assert.ok(calls.some(call =>
+        call.method === 'DELETE'
+        && call.path === `CollectionTagSync/RunOnce/Groups/${createdId}`));
+});
+
+test('saving one run-once group preserves a sibling unsaved draft as unsaved', async () => {
+    const first = editableRunOnceGroup({ id: '33333333-3333-3333-3333-333333333333' });
+    const second = editableRunOnceGroup({ id: '44444444-4444-4444-4444-444444444444' });
+    const { view } = createHarness(async (path, method, body) =>
+        path === 'CollectionTagSync/RunOnce/Groups' && method === 'POST'
+            ? { Outcome: 'Saved', Group: body }
+            : {});
+    view.runOnceGroups = [first.group, second.group];
+    first.source.tag.value = 'Unsaved sibling draft';
+    await view.dispatch('input', first.source.tag);
+
+    await view.dispatch('click', button('save-run-once-group', second.group));
+
+    const rendered = view.querySelector('#collectionTagSyncRunOnceGroups').innerHTML;
+    assert.match(rendered, /data-group-id="33333333-3333-3333-3333-333333333333"[\s\S]*?data-role="run-once-summary-state">Unsaved<[\s\S]*?value="Unsaved sibling draft"[\s\S]*?data-action="preview-run-once" disabled/);
+});
+
+test('deleting one run-once group preserves a sibling unsaved draft as unsaved', async () => {
+    const first = editableRunOnceGroup({ id: '33333333-3333-3333-3333-333333333333' });
+    const second = editableRunOnceGroup({ id: '44444444-4444-4444-4444-444444444444' });
+    const { view } = createHarness();
+    view.runOnceGroups = [first.group, second.group];
+    first.target.tag.value = 'Unsaved target draft';
+    await view.dispatch('input', first.target.tag);
+
+    await view.dispatch('click', button('delete-run-once-group', second.group));
+
+    const rendered = view.querySelector('#collectionTagSyncRunOnceGroups').innerHTML;
+    assert.match(rendered, /data-group-id="33333333-3333-3333-3333-333333333333"[\s\S]*?data-role="run-once-summary-state">Unsaved<[\s\S]*?value="Unsaved target draft"[\s\S]*?data-action="preview-run-once" disabled/);
 });
 
 test('configured mappings render as collapsed source-to-target summaries with one Edit disclosure group', async () => {
@@ -675,7 +910,7 @@ test('rendered validation shows the server message without client-side rule subs
         return {};
     });
 
-    await view.dispatch('click', button('preview-run-once'));
+    await view.dispatch('click', runOnceButton(view, 'preview-run-once'));
 
     assert.equal(view.querySelector('#collectionTagSyncRunOnceStatus').textContent, serverMessage);
 });
@@ -688,7 +923,7 @@ test('editor input invalidates a rendered preview and blocks stale confirmation'
 
         return {};
     });
-    await view.dispatch('click', button('preview-run-once'));
+    await view.dispatch('click', runOnceButton(view, 'preview-run-once'));
 
     await view.dispatch('input', view.sourceEditor.tag);
     await view.dispatch('click', button('confirm-run-once'));
@@ -1027,10 +1262,39 @@ test('two exclusion checkbox input/change sequences retain both IDs in the next 
         await view.dispatch('input', checkbox);
         await view.dispatch('change', checkbox);
     }
-    await view.dispatch('click', button('preview-run-once'));
+    await view.dispatch('click', runOnceButton(view, 'preview-run-once'));
 
     const request = calls.find(call => call.path === 'CollectionTagSync/RunOnce/Preview');
     assert.deepEqual(request.body.ExcludedItemIds, [directItemId, cascadeItemId]);
+});
+
+test('run-once exclusions are cleared after confirmation and before another group preview', async () => {
+    const first = editableRunOnceGroup({ id: '33333333-3333-3333-3333-333333333333' });
+    const second = editableRunOnceGroup({ id: '44444444-4444-4444-4444-444444444444' });
+    const { calls, view } = createHarness(async path => {
+        if (path === 'CollectionTagSync/RunOnce/Preview') {
+            return runOncePreview({ excludableItemIds: [directItemId] });
+        }
+
+        if (path === 'CollectionTagSync/RunOnce/Confirm') {
+            return { Outcome: 'Accepted' };
+        }
+
+        return {};
+    });
+    view.runOnceGroups = [first.group, second.group];
+
+    await view.dispatch('click', button('preview-run-once', first.group));
+    const checkbox = exclusion(directItemId, true);
+    await view.dispatch('input', checkbox);
+    await view.dispatch('change', checkbox);
+    await view.dispatch('click', button('preview-run-once', first.group));
+    await view.dispatch('click', button('confirm-run-once'));
+    await view.dispatch('click', button('preview-run-once', first.group));
+    await view.dispatch('click', button('preview-run-once', second.group));
+
+    const previews = calls.filter(call => call.path === 'CollectionTagSync/RunOnce/Preview');
+    assert.deepEqual(previews.map(call => call.body.ExcludedItemIds), [[], [directItemId], [], []]);
 });
 
 test('run-once preview renders exclusions only for server-marked direct target changes', async () => {
@@ -1056,7 +1320,7 @@ test('run-once preview renders exclusions only for server-marked direct target c
             ? runOncePreview({ excludableItemIds: [directItemId], items })
             : {});
 
-    await view.dispatch('click', button('preview-run-once'));
+    await view.dispatch('click', runOnceButton(view, 'preview-run-once'));
 
     const rendered = view.querySelector('#collectionTagSyncRunOncePreview').innerHTML;
     assert.match(rendered, new RegExp(`data-run-once-exclusion="${directItemId}"`));
@@ -1100,7 +1364,7 @@ test('background status is rendered through the controller for every lifecycle s
 
             return {};
         });
-        await view.dispatch('click', button('preview-run-once'));
+        await view.dispatch('click', runOnceButton(view, 'preview-run-once'));
         await view.dispatch('click', button('confirm-run-once'));
         await Promise.resolve();
 

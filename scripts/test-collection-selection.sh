@@ -209,16 +209,15 @@ if [[ "${response_code}" != "409" ]] \
     exit 10
 fi
 
-self_source_operation="$(jq --null-input \
+self_source_group="$(jq --null-input \
     --arg collection_id "${collection_id}" \
     --arg name "${renamed_name}" \
     '{
         Target: {Kind: 1, CollectionId: $collection_id, CollectionDisplayName: $name},
         Sources: [{Kind: 1, CollectionId: $collection_id, CollectionDisplayName: $name}],
-        Policy: 0,
-        ExcludedItemIds: []
+        Policy: 0
     }')"
-request_with_status POST "${run_once_url}/Preview" "${self_source_operation}"
+request_with_status POST "${run_once_url}/Groups" "${self_source_group}"
 if [[ "${response_code}" != "400" ]]; then
     printf 'The intentionally invalid surrounding run-once returned HTTP %s instead of 400.\n' \
         "${response_code}" >&2

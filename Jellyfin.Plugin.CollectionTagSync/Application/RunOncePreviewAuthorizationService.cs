@@ -24,6 +24,7 @@ internal sealed class RunOncePreviewAuthorizationService
     /// <param name="preview">The complete non-executable plan.</param>
     /// <param name="excludableItemIds">Items with a direct operation-target change.</param>
     /// <param name="administratorId">The initiating administrator identity.</param>
+    /// <param name="groupId">The selected saved-group identity.</param>
     /// <param name="operationFingerprint">The canonical operation and exclusion identity.</param>
     /// <param name="activeRevision">The active revision used during planning.</param>
     /// <param name="removals">The exact planned removal tuples.</param>
@@ -32,6 +33,7 @@ internal sealed class RunOncePreviewAuthorizationService
         ConfigurationPlanPreview preview,
         IEnumerable<Guid> excludableItemIds,
         Guid administratorId,
+        Guid groupId,
         string operationFingerprint,
         long activeRevision,
         IEnumerable<DestructiveRemoval> removals)
@@ -39,6 +41,7 @@ internal sealed class RunOncePreviewAuthorizationService
         var grant = _store.Issue(
             administratorId,
             new RunOncePreviewConfirmation(
+                groupId,
                 operationFingerprint,
                 activeRevision,
                 removals));
@@ -47,6 +50,16 @@ internal sealed class RunOncePreviewAuthorizationService
             excludableItemIds,
             grant.Authorization,
             grant.ExpiresAtUtc);
+    }
+
+    /// <summary>Invalidates every outstanding preview for one saved group.</summary>
+    /// <param name="groupId">The edited or deleted group identity.</param>
+    public void InvalidateGroup(Guid groupId)
+    {
+        if (groupId != Guid.Empty)
+        {
+            _store.RemoveWhere(confirmation => confirmation.GroupId == groupId);
+        }
     }
 
     /// <summary>Consumes one valid administrator-bound authorization.</summary>

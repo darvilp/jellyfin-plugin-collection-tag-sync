@@ -1,7 +1,9 @@
 using System;
+using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 using Jellyfin.Plugin.CollectionTagSync.Application;
+using Jellyfin.Plugin.CollectionTagSync.Configuration;
 using MediaBrowser.Common.Api;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
@@ -34,6 +36,50 @@ public sealed class RunOnceController : ControllerBase
     }
 
     /// <summary>
+    /// Gets all persisted reusable run-once groups.
+    /// </summary>
+    /// <returns>Independent group snapshots in administrator-defined order.</returns>
+    [HttpGet("Groups")]
+    [ProducesResponseType<IReadOnlyList<RunOnceGroupConfiguration>>(StatusCodes.Status200OK)]
+    public ActionResult<IReadOnlyList<RunOnceGroupConfiguration>> GetGroups()
+    {
+        return Ok(_runOnceService.GetGroups());
+    }
+
+    /// <summary>
+    /// Validates and persists one new or edited reusable run-once group.
+    /// </summary>
+    /// <param name="candidate">The complete candidate group.</param>
+    /// <param name="cancellationToken">The cancellation token.</param>
+    /// <returns>The persisted server-normalized group or validation failures.</returns>
+    [HttpPost("Groups")]
+    [ProducesResponseType<RunOnceGroupSaveResult>(StatusCodes.Status200OK)]
+    [ProducesResponseType<RunOnceGroupSaveResult>(StatusCodes.Status400BadRequest)]
+    public async Task<ActionResult<RunOnceGroupSaveResult>> SaveGroupAsync(
+        [FromBody] RunOnceGroupConfiguration candidate,
+        CancellationToken cancellationToken)
+    {
+        var result = await _runOnceService.SaveGroupAsync(candidate, cancellationToken).ConfigureAwait(false);
+        return result.Outcome == RunOnceGroupSaveOutcome.Saved ? Ok(result) : BadRequest(result);
+    }
+
+    /// <summary>
+    /// Deletes one persisted reusable run-once group.
+    /// </summary>
+    /// <param name="id">The stable group identity.</param>
+    /// <param name="cancellationToken">The cancellation token.</param>
+    /// <returns>No content when deleted, or not found.</returns>
+    [HttpDelete("Groups/{id:guid}")]
+    [ProducesResponseType(StatusCodes.Status204NoContent)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> DeleteGroupAsync(Guid id, CancellationToken cancellationToken)
+    {
+        return await _runOnceService.DeleteGroupAsync(id, cancellationToken).ConfigureAwait(false)
+            ? NoContent()
+            : NotFound();
+    }
+
+    /// <summary>
     /// Calculates one complete run-once plan and creates a short-lived authorization.
     /// </summary>
     /// <param name="operation">The operation and ephemeral exclusions.</param>
@@ -44,7 +90,7 @@ public sealed class RunOnceController : ControllerBase
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]
     [ProducesResponseType<RunOncePreviewResult>(StatusCodes.Status400BadRequest)]
     public async Task<ActionResult<RunOncePreviewResult>> PreviewAsync(
-        [FromBody] RunOnceOperationRequest operation,
+        [FromBody] SavedRunOnceOperationRequest operation,
         CancellationToken cancellationToken)
     {
         var administratorId = AdministratorIdentity.Get(User);
@@ -54,7 +100,7 @@ public sealed class RunOnceController : ControllerBase
         }
 
         var result = await _runOnceService
-            .PreviewAsync(operation, administratorId, cancellationToken)
+            .PreviewSavedAsync(operation, administratorId, cancellationToken)
             .ConfigureAwait(false);
         return result.Outcome == RunOncePreviewOutcome.Ready
             ? Ok(result)
@@ -84,7 +130,7 @@ public sealed class RunOnceController : ControllerBase
         }
 
         var result = await _runOnceService
-            .ConfirmAsync(
+            .ConfirmSavedAsync(
                 request.Operation,
                 administratorId,
                 request.Authorization,

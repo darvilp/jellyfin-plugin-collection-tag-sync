@@ -317,7 +317,10 @@ They may form multi-hop chains, but the complete enabled graph must remain acycl
 
 ## 9. Run-once operations
 
-A run-once operation uses the same source/target/policy concepts without persisting an active mapping.
+A run-once group persists the same target, ordered sources, and policy concepts
+as a mapping group without becoming an active mapping. Each preview and
+execution operates on exactly one saved group independently. Groups are never
+combined into one plan and remain available after execution.
 
 Its target must not already be managed by an enabled continuous group. A
 disabled persisted group does not block the operation.
@@ -469,10 +472,10 @@ Validate the complete proposed graph when:
 
 Disabled groups do not participate in the active graph.
 
-Run-once operations are not persisted and therefore do not create a continuous
-graph cycle. A staged reverse/bootstrap path is allowed, but a run-once target
-already managed by an enabled continuous group is rejected. A disabled group
-does not block that target.
+Run-once groups are persisted but never participate in the continuous graph, so
+they do not create a continuous graph cycle. A staged reverse/bootstrap path is
+allowed, but a run-once target already managed by an enabled continuous group
+is rejected. A disabled group does not block that target.
 
 ---
 
@@ -823,6 +826,17 @@ For collections:
 ### 16.3 Run-once page
 
 ```text
+[Tag: kids-safe] OR [Tag: toddler-safe] → [Collection: Kids Safe]
+Additive · Saved
+
+[Edit] [Preview and run] [Delete]
+
+[Add run-once group]
+```
+
+Editing one card expands the shared mapping-group editor:
+
+```text
 Sources:
   [Tag: kids-safe]
   [Tag: toddler-safe]
@@ -833,9 +847,6 @@ Target:
 Policy:
   ( ) Additive
   ( ) Authoritative
-
-[Preview]
-[Run Once]
 ```
 
 ### 16.4 Status and diagnostics

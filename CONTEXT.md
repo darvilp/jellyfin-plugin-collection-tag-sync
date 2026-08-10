@@ -105,14 +105,19 @@ _Avoid_: Permanent mapping, live rule
 
 **Continuous graph**:
 The directed acyclic graph formed by all enabled continuous mappings. Disabled
-groups and run-once operations do not contribute edges to this graph.
+groups and run-once groups do not contribute edges to this graph.
 _Avoid_: Mapping graph, rule graph
 
+**Run-once group**:
+A persisted, reusable mapping-shaped definition with one target, one or more
+sources, and one policy that never becomes active automatically.
+_Avoid_: Run-once template, manual mapping, inactive continuous mapping
+
 **Run-once operation**:
-A non-persisted mapping-shaped operation evaluated once before affected
-downstream continuous mappings settle. It leaves resulting metadata but no
-active relationship.
-_Avoid_: Temporary mapping
+The previewed execution of exactly one run-once group before affected downstream
+continuous mappings settle. Operations are independent and leave resulting
+metadata but no active relationship.
+_Avoid_: Temporary mapping, run-once batch
 
 **Candidate configuration**:
 A complete proposed configuration that is validated and previewed without

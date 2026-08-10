@@ -1,0 +1,9 @@
+.git
+.github
+.testenv
+artifacts
+**/bin
+**/obj
+node_modules
+TestResults
+coverage

@@ -8,7 +8,8 @@ is deliberately separate from any Jellyfin installation running on Windows.
 - WSL 2 with systemd enabled
 - Docker Engine 29 or newer with the Compose plugin
 - .NET SDK 9
-- `curl`, `git`, `jq`, Node.js 18 or newer, `python3`, and `python3-venv`
+- `curl`, `git`, `jq`, Node.js 20 or newer, `python3`, and `python3-venv`
+- Docker access to `mcr.microsoft.com/playwright` for real-browser tests
 
 The repository pins the .NET SDK feature band in `global.json`, all Jellyfin
 NuGet packages in `Directory.Packages.props`, and the test server image in
@@ -47,6 +48,18 @@ node --check --experimental-default-type=module \
 node --test --experimental-default-type=module tests/ui/configPage.test.js
 tests/release/release-tooling.test.sh
 ```
+
+The fast controller tests are supplemented by a real Chromium round trip through
+the isolated Jellyfin administrator UI. Run it for administrator UI,
+configuration-wire, persistence, or other major workflow changes:
+
+```bash
+bash scripts/test-browser-e2e.sh
+```
+
+The command packages and installs the current plugin, signs into the isolated
+test server, exercises the embedded page, and writes failure screenshots,
+videos, traces, and the HTML report under `artifacts/playwright/`.
 
 ## Isolated Jellyfin server
 

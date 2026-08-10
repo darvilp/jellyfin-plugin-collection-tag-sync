@@ -65,4 +65,13 @@ public sealed class PluginConfiguration : BasePluginConfiguration
         "CA1819:Properties should not return arrays",
         Justification = "Jellyfin plugin configuration requires simple settable serializer DTOs.")]
     public MappingGroupConfiguration[] MappingGroups { get; set; } = [];
+
+    /// <summary>
+    /// Gets or sets reusable run-once groups that are excluded from automatic reconciliation.
+    /// </summary>
+    [SuppressMessage(
+        "Performance",
+        "CA1819:Properties should not return arrays",
+        Justification = "Jellyfin plugin configuration requires simple settable serializer DTOs.")]
+    public RunOnceGroupConfiguration[] RunOnceGroups { get; set; } = [];
 }

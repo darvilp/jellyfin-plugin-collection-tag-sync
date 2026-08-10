@@ -91,28 +91,16 @@
         <section id="collectionTagSyncRunOnce" class="verticalSection" aria-labelledby="collectionTagSyncRunOnceTitle">
             <h2 id="collectionTagSyncRunOnceTitle" class="sectionTitle">Run once</h2>
             <p class="fieldDescription">
-                Preview and apply one mapping-shaped operation without persisting a continuous mapping.
-                Exclusions retain an item's observed target state and are bound to the next preview.
+                Save reusable mapping-shaped groups that only run when explicitly previewed and confirmed.
+                Exclusions retain an item's observed target state for one preview and are never saved.
             </p>
-            <div id="collectionTagSyncRunOnceTarget"></div>
-            <h3>Sources</h3>
-            <div id="collectionTagSyncRunOnceSources"></div>
-            <button is="emby-button" type="button" class="raised button" data-action="add-run-once-source">
-                <span>Add source</span>
+            <div id="collectionTagSyncRunOnceGroups"></div>
+            <button is="emby-button" type="button" class="raised button block" data-action="add-run-once-group">
+                <span>Add run-once group</span>
             </button>
-            <div class="selectContainer">
-                <label class="selectLabel" for="collectionTagSyncRunOncePolicy">Policy</label>
-                <select is="emby-select" id="collectionTagSyncRunOncePolicy" class="emby-select-withcolor emby-select">
-                    <option value="0">Additive — preserve manual target state</option>
-                    <option value="1">Authoritative — remove unsupported target state</option>
-                </select>
-            </div>
             <div class="collectionTagSyncActions">
-                <button is="emby-button" type="button" class="raised button-submit" data-action="preview-run-once">
-                    <span>Preview run once</span>
-                </button>
                 <button is="emby-button" type="button" class="raised button-warning" data-action="confirm-run-once" hidden>
-                    <span>Run previewed operation</span>
+                    <span>Run previewed group</span>
                 </button>
             </div>
             <div id="collectionTagSyncRunOnceStatus" class="collectionTagSyncStatus" aria-live="polite"></div>
