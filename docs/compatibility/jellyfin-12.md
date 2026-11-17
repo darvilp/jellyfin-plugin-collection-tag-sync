@@ -109,3 +109,10 @@ After fixing the image, the isolated server reported version `12.0.0` but
 rejected the fixtures' legacy `X-Emby-Token` header with HTTP 401. The same token
 with `Authorization: MediaBrowser Token="..."` returned HTTP 200. Shell and
 Playwright fixtures now use that supported authorization format.
+
+The Jellyfin 12 web header labels its account button `User Menu`, rather than
+the username. Browser sign-in assertions now check the home route and that
+accessible label. Both Playwright administrator workflows passed against the
+disposable cloud server using installed Chromium. The Docker browser runner
+could not download its Microsoft registry image locally due to HTTP 403;
+GitHub CI uses the unchanged pinned Playwright container.

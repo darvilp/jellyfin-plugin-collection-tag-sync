@@ -56,7 +56,8 @@ async function signIn(page) {
     await username.fill(process.env.JFTS_ADMIN_NAME);
     await page.getByRole('textbox', { name: /password/i }).fill(process.env.JFTS_ADMIN_PASSWORD);
     await page.getByRole('button', { name: /sign in/i }).click();
-    await expect(page.getByRole('button', { name: process.env.JFTS_ADMIN_NAME })).toBeVisible();
+    await expect(page).toHaveURL(/#\/home(?:\?|$)/);
+    await expect(page.getByRole('button', { name: 'User Menu', exact: true })).toBeVisible();
 }
 
 async function openPluginConfiguration(page) {
