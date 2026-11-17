@@ -17,12 +17,12 @@ fi
 access_token="$(<"${token_file}")"
 
 api_get() {
-    curl --fail --silent --header "X-Emby-Token: ${access_token}" "$1"
+    curl --fail --silent --header "Authorization: MediaBrowser Token=\"${access_token}\"" "$1"
 }
 
 api_post_json() {
     curl --fail --silent --request POST \
-        --header "X-Emby-Token: ${access_token}" \
+        --header "Authorization: MediaBrowser Token=\"${access_token}\"" \
         --header 'Content-Type: application/json' \
         --data "$2" \
         "$1"
@@ -85,14 +85,14 @@ api_post_json "${server_url}/Items/${movie_id}" "${movie_with_case_variants}"
 
 collection_name="Phase 1 Contract $(date -u +'%Y%m%d%H%M%S%N')"
 first_collection="$(curl --fail --silent --get --request POST \
-    --header "X-Emby-Token: ${access_token}" \
+    --header "Authorization: MediaBrowser Token=\"${access_token}\"" \
     --data-urlencode "name=${collection_name}" \
     --data-urlencode "ids=${movie_id},${series_id}" \
     "${server_url}/Collections")"
 first_collection_id="$(jq --raw-output .Id <<<"${first_collection}")"
 
 second_collection="$(curl --fail --silent --get --request POST \
-    --header "X-Emby-Token: ${access_token}" \
+    --header "Authorization: MediaBrowser Token=\"${access_token}\"" \
     --data-urlencode "name=${collection_name}" \
     --data-urlencode "ids=${movie_id}" \
     "${server_url}/Collections")"
@@ -104,7 +104,7 @@ if [[ "${first_collection_id}" != "${second_collection_id}" ]]; then
 fi
 
 curl --fail --silent --request POST \
-    --header "X-Emby-Token: ${access_token}" \
+    --header "Authorization: MediaBrowser Token=\"${access_token}\"" \
     "${server_url}/Collections/${first_collection_id}/Items?ids=${series_id}"
 
 set_configuration '{"SchemaVersion":7,"MappingGroups":[]}'
@@ -117,7 +117,7 @@ jq --exit-status \
     <<<"${persisted_movie}" >/dev/null
 
 filtered_items="$(curl --fail --silent --get \
-    --header "X-Emby-Token: ${access_token}" \
+    --header "Authorization: MediaBrowser Token=\"${access_token}\"" \
     --data-urlencode 'Recursive=true' \
     --data-urlencode 'IncludeItemTypes=Movie' \
     --data-urlencode 'Tags=KID-APPROVED' \
@@ -140,7 +140,7 @@ jq --exit-status '.SchemaVersion == 7' <<<"${persisted_configuration}" >/dev/nul
 movie_without_tags="$(jq '.Tags = []' <<<"${persisted_movie}")"
 api_post_json "${server_url}/Items/${movie_id}" "${movie_without_tags}"
 curl --fail --silent --request DELETE \
-    --header "X-Emby-Token: ${access_token}" \
+    --header "Authorization: MediaBrowser Token=\"${access_token}\"" \
     "${server_url}/Collections/${first_collection_id}/Items?ids=${series_id}"
 set_configuration '{"SchemaVersion":1,"MappingGroups":[]}'
 

@@ -27,12 +27,12 @@ response_body=''
 response_code=''
 
 api_get() {
-    curl --fail --silent --header "X-Emby-Token: ${access_token}" "$1"
+    curl --fail --silent --header "Authorization: MediaBrowser Token=\"${access_token}\"" "$1"
 }
 
 api_post_json() {
     curl --fail --silent --request POST \
-        --header "X-Emby-Token: ${access_token}" \
+        --header "Authorization: MediaBrowser Token=\"${access_token}\"" \
         --header 'Content-Type: application/json' \
         --data "$2" \
         "$1"
@@ -45,7 +45,7 @@ request_with_status() {
     local authenticated="${4:-true}"
     local -a arguments=(--silent --show-error --request "${method}" --write-out $'\n%{http_code}')
     if [[ "${authenticated}" == "true" ]]; then
-        arguments+=(--header "X-Emby-Token: ${access_token}")
+        arguments+=(--header "Authorization: MediaBrowser Token=\"${access_token}\"")
     fi
 
     if [[ -n "${body}" ]]; then
@@ -118,7 +118,7 @@ series_original_tags="$(jq --compact-output --arg item_id "${series_id}" \
 
 collection_name="Activation Target $(date -u +'%Y%m%d%H%M%S%N')"
 collection_id="$(curl --fail --silent --get --request POST \
-    --header "X-Emby-Token: ${access_token}" \
+    --header "Authorization: MediaBrowser Token=\"${access_token}\"" \
     --data-urlencode "name=${collection_name}" \
     "${server_url}/Collections" | jq --raw-output .Id)"
 movie_source_tags="$(jq --arg tag "${source_tag}" '. + [$tag] | unique' <<<"${movie_original_tags}")"

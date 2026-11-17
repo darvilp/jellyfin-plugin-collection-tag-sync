@@ -21,7 +21,7 @@ async function authenticate(request) {
 
 async function saveConfiguration(request, accessToken, configuration) {
     const response = await request.post('/CollectionTagSync/Configuration', {
-        headers: { 'X-Emby-Token': accessToken },
+        headers: { Authorization: `MediaBrowser Token="${accessToken}"` },
         data: configuration
     });
     expect(response.ok()).toBeTruthy();
@@ -29,12 +29,12 @@ async function saveConfiguration(request, accessToken, configuration) {
 
 async function clearRunOnceGroups(request, accessToken) {
     const response = await request.get('/CollectionTagSync/RunOnce/Groups', {
-        headers: { 'X-Emby-Token': accessToken }
+        headers: { Authorization: `MediaBrowser Token="${accessToken}"` }
     });
     expect(response.ok()).toBeTruthy();
     for (const group of await response.json()) {
         const deleted = await request.delete(`/CollectionTagSync/RunOnce/Groups/${group.Id}`, {
-            headers: { 'X-Emby-Token': accessToken }
+            headers: { Authorization: `MediaBrowser Token="${accessToken}"` }
         });
         expect(deleted.ok()).toBeTruthy();
     }
@@ -42,7 +42,7 @@ async function clearRunOnceGroups(request, accessToken) {
 
 async function saveRunOnceGroup(request, accessToken, group) {
     const response = await request.post('/CollectionTagSync/RunOnce/Groups', {
-        headers: { 'X-Emby-Token': accessToken },
+        headers: { Authorization: `MediaBrowser Token="${accessToken}"` },
         data: group
     });
     expect(response.ok()).toBeTruthy();
@@ -122,7 +122,7 @@ test('saved mappings round-trip through the real Jellyfin administrator page', a
         .toContainText(/configuration saved/i);
 
     const persistedResponse = await request.get(`/Plugins/${pluginId}/Configuration`, {
-        headers: { 'X-Emby-Token': accessToken }
+        headers: { Authorization: `MediaBrowser Token="${accessToken}"` }
     });
     expect(persistedResponse.ok()).toBeTruthy();
     const persisted = await persistedResponse.json();
@@ -197,7 +197,7 @@ test('saved run-once groups are compact, persistent, and execute independently',
     await expect(page.locator('#collectionTagSyncRunOnceStatus')).toContainText(/execution queued/i);
 
     const persisted = await request.get('/CollectionTagSync/RunOnce/Groups', {
-        headers: { 'X-Emby-Token': accessToken }
+        headers: { Authorization: `MediaBrowser Token="${accessToken}"` }
     });
     expect(persisted.ok()).toBeTruthy();
     const savedGroups = await persisted.json();
@@ -210,7 +210,7 @@ test('saved run-once groups are compact, persistent, and execute independently',
     expect(savedGroups.some(group => 'ExcludedItemIds' in group)).toBeFalsy();
 
     const deleted = await request.delete(`/CollectionTagSync/RunOnce/Groups/${first.Id}`, {
-        headers: { 'X-Emby-Token': accessToken }
+        headers: { Authorization: `MediaBrowser Token="${accessToken}"` }
     });
     expect(deleted.ok()).toBeTruthy();
     await page.reload();

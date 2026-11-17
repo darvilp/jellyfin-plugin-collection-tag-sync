@@ -26,12 +26,12 @@ original_configuration=''
 event_log=''
 
 api_get() {
-    curl --fail --silent --header "X-Emby-Token: ${access_token}" "$1"
+    curl --fail --silent --header "Authorization: MediaBrowser Token=\"${access_token}\"" "$1"
 }
 
 api_post_json() {
     curl --fail --silent --request POST \
-        --header "X-Emby-Token: ${access_token}" \
+        --header "Authorization: MediaBrowser Token=\"${access_token}\"" \
         --header 'Content-Type: application/json' \
         --data "$2" \
         "$1"
@@ -66,7 +66,7 @@ set_configuration() {
 create_collection() {
     local name="$1"
     curl --fail --silent --get --request POST \
-        --header "X-Emby-Token: ${access_token}" \
+        --header "Authorization: MediaBrowser Token=\"${access_token}\"" \
         --data-urlencode "name=${name}" \
         "${server_url}/Collections" \
         | jq --raw-output .Id
@@ -252,7 +252,7 @@ movie_source_tags="$(jq --arg tag "${source_tag}" '. + [$tag] | unique' <<<"${mo
 set_item_tags "${movie_id}" "${movie_source_tags}"
 set_item_tags "${movie_id}" "${movie_source_tags}"
 curl --fail --silent --request POST \
-    --header "X-Emby-Token: ${access_token}" \
+    --header "Authorization: MediaBrowser Token=\"${access_token}\"" \
     "${server_url}/Collections/${source_collection_id}/Items?ids=${series_id}"
 
 wait_for_collection_state "${target_collection_id}" "${movie_id}" true
@@ -264,7 +264,7 @@ set_configuration "${authoritative_configuration}"
 set_item_tags "${movie_id}" "${movie_original_tags}"
 set_item_tags "${movie_id}" "${movie_original_tags}"
 curl --fail --silent --request DELETE \
-    --header "X-Emby-Token: ${access_token}" \
+    --header "Authorization: MediaBrowser Token=\"${access_token}\"" \
     "${server_url}/Collections/${source_collection_id}/Items?ids=${series_id}"
 
 wait_for_collection_state "${target_collection_id}" "${movie_id}" false
@@ -298,7 +298,7 @@ unresolved_configuration="$(jq --null-input \
     }')"
 set_configuration "${unresolved_configuration}"
 curl --fail --silent --request DELETE \
-    --header "X-Emby-Token: ${access_token}" \
+    --header "Authorization: MediaBrowser Token=\"${access_token}\"" \
     "${server_url}/Items/${source_collection_id}"
 set_item_tags "${movie_id}" "${movie_preserved_tags}"
 set_item_tags "${movie_id}" "${movie_preserved_tags}"

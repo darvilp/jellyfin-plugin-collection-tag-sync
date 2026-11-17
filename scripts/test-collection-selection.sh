@@ -19,12 +19,12 @@ response_body=''
 response_code=''
 
 api_get() {
-    curl --fail --silent --header "X-Emby-Token: ${access_token}" "$1"
+    curl --fail --silent --header "Authorization: MediaBrowser Token=\"${access_token}\"" "$1"
 }
 
 api_post_json() {
     curl --fail --silent --request POST \
-        --header "X-Emby-Token: ${access_token}" \
+        --header "Authorization: MediaBrowser Token=\"${access_token}\"" \
         --header 'Content-Type: application/json' \
         --data "$2" \
         "$1"
@@ -32,7 +32,7 @@ api_post_json() {
 
 api_delete() {
     curl --fail --silent --request DELETE \
-        --header "X-Emby-Token: ${access_token}" \
+        --header "Authorization: MediaBrowser Token=\"${access_token}\"" \
         "$1" >/dev/null
 }
 
@@ -43,7 +43,7 @@ request_with_status() {
     local authenticated="${4:-true}"
     local -a arguments=(--silent --show-error --request "${method}" --write-out $'\n%{http_code}')
     if [[ "${authenticated}" == "true" ]]; then
-        arguments+=(--header "X-Emby-Token: ${access_token}")
+        arguments+=(--header "Authorization: MediaBrowser Token=\"${access_token}\"")
     fi
 
     if [[ -n "${body}" ]]; then

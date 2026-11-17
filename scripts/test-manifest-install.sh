@@ -32,7 +32,7 @@ restore_environment() {
 
     if [[ -n "${original_repositories}" ]]; then
         curl --silent --request POST \
-            --header "X-Emby-Token: ${access_token}" \
+            --header "Authorization: MediaBrowser Token=\"${access_token}\"" \
             --header 'Content-Type: application/json' \
             --data "${original_repositories}" \
             "${server_url}/Repositories" >/dev/null
@@ -71,20 +71,20 @@ docker exec collection-tag-sync-jellyfin \
     curl --fail --silent "${manifest_url}" >/dev/null
 
 original_repositories="$(curl --fail --silent \
-    --header "X-Emby-Token: ${access_token}" \
+    --header "Authorization: MediaBrowser Token=\"${access_token}\"" \
     "${server_url}/Repositories")"
 temporary_repository="$(jq --arg url "${manifest_url}" \
     '[{"Name":"Collection Tag Sync Temporary","Url":$url,"Enabled":true}]' \
     <<<"${original_repositories}")"
 
 curl --fail --silent --request POST \
-    --header "X-Emby-Token: ${access_token}" \
+    --header "Authorization: MediaBrowser Token=\"${access_token}\"" \
     --header 'Content-Type: application/json' \
     --data "${temporary_repository}" \
     "${server_url}/Repositories"
 
 packages="$(curl --fail --silent \
-    --header "X-Emby-Token: ${access_token}" \
+    --header "Authorization: MediaBrowser Token=\"${access_token}\"" \
     "${server_url}/Packages")"
 jq --exit-status \
     --arg plugin_id "${plugin_id}" \
@@ -96,7 +96,7 @@ jq --exit-status \
     <<<"${packages}" >/dev/null
 
 plugins_before="$(curl --fail --silent \
-    --header "X-Emby-Token: ${access_token}" \
+    --header "Authorization: MediaBrowser Token=\"${access_token}\"" \
     "${server_url}/Plugins")"
 if jq --exit-status \
     --arg plugin_id "${plugin_id}" \
@@ -112,7 +112,7 @@ if jq --exit-status \
 fi
 
 curl --fail --silent --get --request POST \
-    --header "X-Emby-Token: ${access_token}" \
+    --header "Authorization: MediaBrowser Token=\"${access_token}\"" \
     --data-urlencode "assemblyGuid=${plugin_id}" \
     --data-urlencode "version=${plugin_version}" \
     --data-urlencode "repositoryUrl=${manifest_url}" \
@@ -134,7 +134,7 @@ if [[ "${health:-}" != "healthy" ]]; then
 fi
 
 plugins="$(curl --fail --silent \
-    --header "X-Emby-Token: ${access_token}" \
+    --header "Authorization: MediaBrowser Token=\"${access_token}\"" \
     "${server_url}/Plugins")"
 jq --exit-status \
     --arg plugin_id "${plugin_id}" \

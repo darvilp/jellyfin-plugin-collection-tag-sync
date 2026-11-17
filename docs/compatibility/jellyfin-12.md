@@ -61,8 +61,9 @@ Cross-ABI configuration retention requires the separate server-upgrade test belo
   manifest fixtures beside the new 12.0.0.0 entry.
 - Pinned JPRM built a local ZIP; package contents and metadata verification passed.
 
-No Jellyfin server was started or accessed for this migration. Browser/server
-integration, catalog installation and cross-ABI upgrade checks remain pending.
+The initial migration did not run a server. Follow-up CI debugging used only
+the isolated Compose fixture. Catalog installation and cross-ABI upgrade checks
+remain pending; the owner's live server has not been accessed.
 The .NET test runner emitted an informational VSTEST_ARTIFACTS_DIRECTORY fallback
 message after all tests passed. JPRM warned that no plugin image is configured.
 
@@ -103,3 +104,8 @@ Its amd64 image labels identify Jellyfin version `12.0` and the official
 Release verification removes the digest and normalizes `12.0` to `12.0.0`
 before comparing it with the package ABI. A regression assertion checks that
 the Compose server and media generator use the same pinned image.
+
+After fixing the image, the isolated server reported version `12.0.0` but
+rejected the fixtures' legacy `X-Emby-Token` header with HTTP 401. The same token
+with `Authorization: MediaBrowser Token="..."` returned HTTP 200. Shell and
+Playwright fixtures now use that supported authorization format.

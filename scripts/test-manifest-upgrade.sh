@@ -45,7 +45,7 @@ restore_environment() {
 
     if [[ -n "${original_repositories}" ]]; then
         curl --silent --request POST \
-            --header "X-Emby-Token: ${access_token}" \
+            --header "Authorization: MediaBrowser Token=\"${access_token}\"" \
             --header 'Content-Type: application/json' \
             --data "${original_repositories}" \
             "${server_url}/Repositories" >/dev/null
@@ -83,7 +83,7 @@ assert_active_version() {
     local expected_version="$1"
     local plugins
     plugins="$(curl --fail --silent \
-        --header "X-Emby-Token: ${access_token}" \
+        --header "Authorization: MediaBrowser Token=\"${access_token}\"" \
         "${server_url}/Plugins")"
     if ! jq --exit-status \
         --arg plugin_id "${plugin_id}" \
@@ -102,7 +102,7 @@ assert_active_version() {
 install_catalog_version() {
     local version="$1"
     curl --fail --silent --get --request POST \
-        --header "X-Emby-Token: ${access_token}" \
+        --header "Authorization: MediaBrowser Token=\"${access_token}\"" \
         --data-urlencode "assemblyGuid=${plugin_id}" \
         --data-urlencode "version=${version}" \
         --data-urlencode "repositoryUrl=${manifest_url}" \
@@ -115,7 +115,7 @@ assert_catalog_version() {
     local version="$1"
     local packages
     packages="$(curl --fail --silent \
-        --header "X-Emby-Token: ${access_token}" \
+        --header "Authorization: MediaBrowser Token=\"${access_token}\"" \
         "${server_url}/Packages")"
     if ! jq --exit-status \
         --arg plugin_id "${plugin_id}" \
@@ -164,13 +164,13 @@ done
 docker exec collection-tag-sync-jellyfin curl --fail --silent "${manifest_url}" >/dev/null
 
 original_repositories="$(curl --fail --silent \
-    --header "X-Emby-Token: ${access_token}" \
+    --header "Authorization: MediaBrowser Token=\"${access_token}\"" \
     "${server_url}/Repositories")"
 temporary_repository="$(jq --arg url "${manifest_url}" \
     '[{"Name":"Collection Tag Sync Upgrade Test","Url":$url,"Enabled":true}]' \
     <<<"${original_repositories}")"
 curl --fail --silent --request POST \
-    --header "X-Emby-Token: ${access_token}" \
+    --header "Authorization: MediaBrowser Token=\"${access_token}\"" \
     --header 'Content-Type: application/json' \
     --data "${temporary_repository}" \
     "${server_url}/Repositories"
@@ -178,7 +178,7 @@ curl --fail --silent --request POST \
 assert_catalog_version "${previous_version}"
 
 plugins_before="$(curl --fail --silent \
-    --header "X-Emby-Token: ${access_token}" \
+    --header "Authorization: MediaBrowser Token=\"${access_token}\"" \
     "${server_url}/Plugins")"
 if jq --exit-status \
     --arg plugin_id "${plugin_id}" \
@@ -192,7 +192,7 @@ install_catalog_version "${previous_version}"
 
 sentinel_collection_name="Upgrade Sentinel Target"
 sentinel_collection_id="$(curl --fail --silent --get --request POST \
-    --header "X-Emby-Token: ${access_token}" \
+    --header "Authorization: MediaBrowser Token=\"${access_token}\"" \
     --data-urlencode "name=${sentinel_collection_name}" \
     "${server_url}/Collections" | jq --raw-output .Id)"
 sentinel_configuration="$(jq --null-input \
@@ -223,7 +223,7 @@ sentinel_configuration="$(jq --null-input \
       ]
     }')"
 activation="$(curl --fail --silent --request POST \
-    --header "X-Emby-Token: ${access_token}" \
+    --header "Authorization: MediaBrowser Token=\"${access_token}\"" \
     --header 'Content-Type: application/json' \
     --data "${sentinel_configuration}" \
     "${server_url}/CollectionTagSync/Configuration")"
@@ -237,7 +237,7 @@ assert_sentinel_configuration() {
     local require_run_once_groups="${1:-false}"
     local configuration
     configuration="$(curl --fail --silent \
-        --header "X-Emby-Token: ${access_token}" \
+        --header "Authorization: MediaBrowser Token=\"${access_token}\"" \
         "${server_url}/Plugins/${plugin_id}/Configuration")"
     if ! jq --exit-status \
         --argjson revision "${active_revision}" \
