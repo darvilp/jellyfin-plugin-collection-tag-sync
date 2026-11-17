@@ -51,6 +51,11 @@ else
 fi
 test "$(<"${override_identity_capture}")" = '3456:4567'
 
+compose_image="$(sed -n 's/^[[:space:]]*image: //p' "${project_root}/compose.yaml")"
+fixture_image="$(sed -n 's/^image="\(.*\)"$/\1/p' "${project_root}/scripts/test-env.sh")"
+test "${compose_image}" = "${fixture_image}"
+[[ "${compose_image}" =~ ^jellyfin/jellyfin:12\.0@sha256:[0-9a-f]{64}$ ]]
+
 version="$("${read_build_metadata}" version)"
 upgrade_from="$("${read_build_metadata}" upgradeFrom 2>/dev/null || true)"
 release_notes="${project_root}/docs/releases/v${version}-alpha.md"

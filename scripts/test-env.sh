@@ -6,7 +6,7 @@ script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 project_root="$(cd -- "${script_dir}/.." && pwd)"
 state_root="${project_root}/.testenv/jellyfin"
 media_root="${state_root}/media"
-image="jellyfin/jellyfin:12.0.0"
+image="jellyfin/jellyfin:12.0@sha256:baba630419915985442f315f08b0cf46d9f4c8a0cc4bd38e94a6d35751dd5ef5"
 
 compose() {
     docker compose --project-directory "${project_root}" -f "${project_root}/compose.yaml" "$@"

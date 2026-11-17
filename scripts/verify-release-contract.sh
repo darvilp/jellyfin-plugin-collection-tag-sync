@@ -77,6 +77,11 @@ done
 
 test_server_version="$(sed -n 's|^[[:space:]]*image:[[:space:]]*jellyfin/jellyfin:\([^[:space:]]*\).*|\1|p' \
     "${project_root}/compose.yaml")"
+# Docker release tags omit a zero patch component; NuGet/ABI versions retain it.
+test_server_version="${test_server_version%%@*}"
+if [[ "${test_server_version}" =~ ^[0-9]+\.[0-9]+$ ]]; then
+    test_server_version="${test_server_version}.0"
+fi
 if [[ "${test_server_version}" != "${jellyfin_package_version}" ]]; then
     fail "Test server ${test_server_version:-<missing>} does not match target ABI server version ${jellyfin_package_version}."
 fi

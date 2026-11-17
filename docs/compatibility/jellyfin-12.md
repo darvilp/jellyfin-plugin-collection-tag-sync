@@ -71,7 +71,7 @@ message after all tests passed. JPRM warned that no plugin image is configured.
 - [ ] Run the PR's GitHub build/package checks and review their results.
 - [ ] Use an isolated Jellyfin 12 test server, with no production data mounts.
       Build with `scripts/package.sh`, then run `scripts/test-browser-e2e.sh`
-      with the candidate ZIP. The Compose fixture now pins 12.0.0.
+      with the candidate ZIP. The Compose fixture pins the official 12.0 image by digest.
 - [ ] Run the server scripts listed in [local development](../DEVELOPMENT.md),
       including clean temporary-catalog installation. Confirm the plugin loads,
       its administrator page works and non-administrators cannot mutate state.
@@ -91,3 +91,15 @@ message after all tests passed. JPRM warned that no plugin image is configured.
 Rollback of a server migration uses the complete pre-upgrade data/config backup
 and the matching old server/plugin versions. Changing only the plugin DLL does
 not reverse Jellyfin database migrations.
+
+## Docker image correction
+
+The initial CI package job built and verified the ZIP but could not start its
+browser fixture because Docker Hub has no `jellyfin/jellyfin:12.0.0` tag.
+The official registry's `12.0` tag was independently resolved to manifest-list
+digest `sha256:baba630419915985442f315f08b0cf46d9f4c8a0cc4bd38e94a6d35751dd5ef5`.
+Its amd64 image labels identify Jellyfin version `12.0` and the official
+`jellyfin/jellyfin-packaging` source. Both fixture references pin that digest.
+Release verification removes the digest and normalizes `12.0` to `12.0.0`
+before comparing it with the package ABI. A regression assertion checks that
+the Compose server and media generator use the same pinned image.
