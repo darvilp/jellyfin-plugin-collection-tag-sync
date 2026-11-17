@@ -2,7 +2,7 @@
 
 ## Build target and evidence
 
-This is an unreleased migration for plugin version `0.3.0.0`. It targets
+This migration prepares plugin version `0.3.0.0` for an alpha release. It targets
 Jellyfin `12.0.0`, ABI `12.0.0.0`, and `net10.0`. The SDK baseline is
 `10.0.100` with `latestMinor` roll-forward. Cloud validation used SDK `10.0.404`.
 The minimum 12.0.0 package line is intentional; later 12.x runtime compatibility
@@ -163,3 +163,12 @@ an actual 10.11-to-12 server upgrade, and other 12.x versions remain unvalidated
 Local Docker-based browser execution was blocked by HTTP 403 downloading the
 Microsoft Playwright image; installed Chromium supplied local browser coverage,
 and GitHub CI successfully ran the original container-based workflow.
+
+## Release authorization
+
+The owner authorized merging and publishing 0.3.0.0 for local testing after the
+successful smoke tests, accepting the remaining cross-ABI configuration risk.
+Other 12.x versions remain unvalidated. The automated release workflow must
+still pass its clean catalog-install gate before publishing assets or updating
+the live manifest. A local attempt could not reach the workspace-hosted catalog
+from the cloud container, so it supplies no clean-install success evidence.

@@ -14,4 +14,4 @@ category: "General"
 artifacts:
   - "Jellyfin.Plugin.CollectionTagSync.dll"
 changelog: >
-  Unreleased Jellyfin 12 migration targeting .NET 10. Disposable-server smoke tests passed; server-upgrade validation pending.
+  Jellyfin 12 migration targeting .NET 10. Disposable-server smoke tests passed; server-upgrade validation pending.
