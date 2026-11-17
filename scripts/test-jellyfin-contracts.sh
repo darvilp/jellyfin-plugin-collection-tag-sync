@@ -113,7 +113,7 @@ restart_server
 
 persisted_movie="$(api_get "${server_url}/Items/${movie_id}")"
 jq --exit-status \
-    '.Tags | (index("Kid-Approved") != null and index("kid-approved") != null)' \
+    '.Tags == ["Kid-Approved"]' \
     <<<"${persisted_movie}" >/dev/null
 
 filtered_items="$(curl --fail --silent --get \
@@ -159,6 +159,6 @@ jq --exit-status --arg movie_id "${movie_id}" --arg series_id "${series_id}" \
 restored_configuration="$(api_get "${server_url}/Plugins/${plugin_id}/Configuration")"
 jq --exit-status '.SchemaVersion == 1' <<<"${restored_configuration}" >/dev/null
 
-printf 'Verified restart persistence, case-insensitive filtering, exact tag variants, Movie/Series membership, duplicate collection names, and plugin configuration serialization.\n'
+printf 'Verified restart persistence, case-insensitive filtering, case-equivalent tag deduplication, Movie/Series membership, duplicate collection names, and plugin configuration serialization.\n'
 printf 'Confirmed that two same-name create calls reused collection identity %s.\n' \
     "${first_collection_id}"

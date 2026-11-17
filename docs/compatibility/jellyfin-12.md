@@ -69,8 +69,8 @@ message after all tests passed. JPRM warned that no plugin image is configured.
 
 ## Owner handoff before merge or release
 
-- [ ] Run the PR's GitHub build/package checks and review their results.
-- [ ] Use an isolated Jellyfin 12 test server, with no production data mounts.
+- [x] Run the PR's GitHub build/package checks and review their results.
+- [x] Use an isolated Jellyfin 12 test server, with no production data mounts.
       Build with `scripts/package.sh`, then run `scripts/test-browser-e2e.sh`
       with the candidate ZIP. The Compose fixture pins the official 12.0 image by digest.
 - [ ] Run the server scripts listed in [local development](../DEVELOPMENT.md),
@@ -116,3 +116,50 @@ accessible label. Both Playwright administrator workflows passed against the
 disposable cloud server using installed Chromium. The Docker browser runner
 could not download its Microsoft registry image locally due to HTTP 403;
 GitHub CI uses the unchanged pinned Playwright container.
+
+## Disposable cloud runtime validation
+
+Follow-up validation used the pinned Docker image with repository-owned
+`.testenv/jellyfin` configuration/cache and synthetic Movie/Series fixtures.
+`/System/Info/Public` reported `12.0.0`. The locally built JPRM 0.3.0.0 ZIP
+passed package verification and `install-local-plugin.sh` installed it and
+restarted the disposable server. No production media or live server was used.
+
+The two Playwright workflows passed with installed Chromium. GitHub CI run
+[44027978022](https://github.com/darvilp/jellyfin-plugin-collection-tag-sync/actions/runs/44027978022)
+also passed both jobs, including the pinned Playwright-container workflows.
+
+These local server scripts passed:
+
+- `test-event-observation.sh`: item and collection events.
+- `test-walking-slice.sh`: Movie/Series adds, duplicate inputs and self-events.
+- `test-continuous-adapters.sh`: Additive/Authoritative policies, tag spelling
+  preservation and missing-collection handling.
+- `test-configuration-activation.sh`: administrator authorization, invalid-input
+  preservation, destructive pause, background settlement and restart retention.
+- `test-full-reconcile.sh`: scheduled task, missed additions, unsupported target
+  repair and startup reconciliation.
+- `test-destructive-circuit-breaker.sh`: atomic pause, persisted diagnostics,
+  authorization invalidation on restart and single-use confirmation.
+- `test-configuration-preview.sh`: destructive preview and confirmation.
+- `test-run-once.sh`: independent previewed execution and persistent groups.
+- `test-collection-selection.sh`: GUID selection, rename-safe identity, name
+  protection, duplicate recovery and independent collection creation.
+- `test-administrator-ui.sh`: embedded resources, protected endpoints and
+  background Full Reconcile queueing.
+
+The old `test-jellyfin-contracts.sh` expected two case-equivalent tags after
+an item API write. Jellyfin 12 now trims and deduplicates those tags with
+`OrdinalIgnoreCase`, preserving the first spelling in this fixture. This was
+observed after restart and verified in upstream
+[ItemUpdateController](https://github.com/jellyfin/jellyfin/blob/6c073e19ddf604b2369c638716164fdab4c952dc/Jellyfin.Api/Controllers/ItemUpdateController.cs).
+The assertion now requires exactly `Kid-Approved` after submitting both variants.
+The revised contract script passed, including restart persistence, filtering,
+Movie/Series membership and configuration serialization.
+The plugin's case-insensitive identity policy needs no code change.
+
+Clean temporary-catalog installation, cross-ABI configuration retention during
+an actual 10.11-to-12 server upgrade, and other 12.x versions remain unvalidated.
+Local Docker-based browser execution was blocked by HTTP 403 downloading the
+Microsoft Playwright image; installed Chromium supplied local browser coverage,
+and GitHub CI successfully ran the original container-based workflow.

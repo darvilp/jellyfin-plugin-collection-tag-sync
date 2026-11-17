@@ -25,7 +25,7 @@ The plugin will not automatically convert every Jellyfin tag into a collection.
 ## Compatibility
 
 This branch prepares the unreleased `0.3.0.0` build for Jellyfin 12.0.0 and
-.NET 10. Server runtime validation is pending. See the
+.NET 10. Disposable-server runtime smoke tests passed; server-upgrade validation is pending. See the
 [Jellyfin 12 migration and handoff](docs/compatibility/jellyfin-12.md).
 
 Jellyfin 10.11/.NET 9 source is preserved on
