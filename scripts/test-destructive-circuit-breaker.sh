@@ -32,12 +32,12 @@ original_configuration=''
 plugin_disabled=false
 
 api_get() {
-    curl --fail --silent --header "X-Emby-Token: ${access_token}" "$1"
+    curl --fail --silent --header "Authorization: MediaBrowser Token=\"${access_token}\"" "$1"
 }
 
 api_post_json() {
     curl --fail --silent --request POST \
-        --header "X-Emby-Token: ${access_token}" \
+        --header "Authorization: MediaBrowser Token=\"${access_token}\"" \
         --header 'Content-Type: application/json' \
         --data "$2" \
         "$1"
@@ -45,7 +45,7 @@ api_post_json() {
 
 api_post_json_with_status() {
     curl --silent --request POST \
-        --header "X-Emby-Token: ${access_token}" \
+        --header "Authorization: MediaBrowser Token=\"${access_token}\"" \
         --header 'Content-Type: application/json' \
         --data "$2" \
         --write-out $'\n%{http_code}' \
@@ -191,7 +191,7 @@ prior_end="$(jq --raw-output \
     '.[] | select(.Key == "CollectionTagSyncFullReconcile") | (.LastExecutionResult.EndTimeUtc // "")' \
     <<<"${tasks}")"
 curl --fail --silent --request POST \
-    --header "X-Emby-Token: ${access_token}" \
+    --header "Authorization: MediaBrowser Token=\"${access_token}\"" \
     "${server_url}/ScheduledTasks/Running/${task_id}"
 
 task=''

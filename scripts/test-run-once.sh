@@ -31,12 +31,12 @@ bootstrap_group_id=''
 destructive_group_id=''
 
 api_get() {
-    curl --fail --silent --header "X-Emby-Token: ${access_token}" "$1"
+    curl --fail --silent --header "Authorization: MediaBrowser Token=\"${access_token}\"" "$1"
 }
 
 api_post_json() {
     curl --fail --silent --request POST \
-        --header "X-Emby-Token: ${access_token}" \
+        --header "Authorization: MediaBrowser Token=\"${access_token}\"" \
         --header 'Content-Type: application/json' \
         --data "$2" \
         "$1"
@@ -46,7 +46,7 @@ delete_run_once_group() {
     local group_id="$1"
     if [[ -n "${group_id}" ]]; then
         curl --silent --request DELETE \
-            --header "X-Emby-Token: ${access_token}" \
+            --header "Authorization: MediaBrowser Token=\"${access_token}\"" \
             "${run_once_url}/Groups/${group_id}" >/dev/null
     fi
 }
@@ -56,7 +56,7 @@ request_with_status() {
     local body="$2"
     local response
     response="$(curl --silent --show-error --request POST \
-        --header "X-Emby-Token: ${access_token}" \
+        --header "Authorization: MediaBrowser Token=\"${access_token}\"" \
         --header 'Content-Type: application/json' \
         --data "${body}" \
         --write-out $'\n%{http_code}' \
@@ -86,7 +86,7 @@ restart_server() {
 create_collection() {
     local name="$1"
     curl --fail --silent --get --request POST \
-        --header "X-Emby-Token: ${access_token}" \
+        --header "Authorization: MediaBrowser Token=\"${access_token}\"" \
         --data-urlencode "name=${name}" \
         "${server_url}/Collections" \
         | jq --raw-output .Id
@@ -375,7 +375,7 @@ fi
 stale_authorization="$(jq --raw-output \
     '.Authorization.Authorization // .authorization.authorization' <<<"${response_body}")"
 curl --fail --silent --request DELETE \
-    --header "X-Emby-Token: ${access_token}" \
+    --header "Authorization: MediaBrowser Token=\"${access_token}\"" \
     "${server_url}/Collections/${animation_id}/Items?ids=${movie_id}"
 wait_for_collection_state "${animation_id}" "${movie_id}" false
 stale_confirmation="$(jq --null-input \
@@ -393,7 +393,7 @@ if [[ "${response_code}" != "409" ]] \
 fi
 
 curl --fail --silent --request POST \
-    --header "X-Emby-Token: ${access_token}" \
+    --header "Authorization: MediaBrowser Token=\"${access_token}\"" \
     "${server_url}/Collections/${animation_id}/Items?ids=${movie_id}"
 wait_for_collection_state "${animation_id}" "${movie_id}" true
 excluded="$(jq --arg item_id "${movie_id}" '.ExcludedItemIds = [$item_id]' <<<"${destructive}")"

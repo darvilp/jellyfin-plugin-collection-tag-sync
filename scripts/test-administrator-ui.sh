@@ -22,7 +22,7 @@ request_with_status() {
     local authenticated="${3:-true}"
     local -a arguments=(--silent --show-error --request "${method}" --write-out $'\n%{http_code}')
     if [[ "${authenticated}" == "true" ]]; then
-        arguments+=(--header "X-Emby-Token: ${access_token}")
+        arguments+=(--header "Authorization: MediaBrowser Token=\"${access_token}\"")
     fi
 
     response="$(curl "${arguments[@]}" "${url}")"
@@ -31,7 +31,7 @@ request_with_status() {
 }
 
 configuration_page="$(curl --fail --silent --get \
-    --header "X-Emby-Token: ${access_token}" \
+    --header "Authorization: MediaBrowser Token=\"${access_token}\"" \
     --data-urlencode 'name=Collection Tag Sync' \
     "${server_url}/web/ConfigurationPage")"
 if [[ "${configuration_page}" != *'data-controller="__plugin/Collection Tag Sync.js"'* \
@@ -52,7 +52,7 @@ if [[ "${configuration_page}" != *'data-controller="__plugin/Collection Tag Sync
 fi
 
 controller="$(curl --fail --silent --get \
-    --header "X-Emby-Token: ${access_token}" \
+    --header "Authorization: MediaBrowser Token=\"${access_token}\"" \
     --data-urlencode 'name=Collection Tag Sync.js' \
     "${server_url}/web/ConfigurationPage")"
 if [[ "${controller}" != *'export default function (view)'* \
@@ -138,5 +138,5 @@ if [[ "${full_reconcile_state}" != "3" \
     exit 10
 fi
 
-printf 'Verified embedded administrator page/controller resources on Jellyfin 10.11.11.\n'
+printf 'Verified embedded administrator page/controller resources on Jellyfin 12.0.0.\n'
 printf 'Verified elevated tag/status support and background Full Reconcile queueing.\n'

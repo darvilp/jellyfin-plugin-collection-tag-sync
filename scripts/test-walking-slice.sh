@@ -22,12 +22,12 @@ movie_original_tags=''
 series_original_tags=''
 
 api_get() {
-    curl --fail --silent --header "X-Emby-Token: ${access_token}" "$1"
+    curl --fail --silent --header "Authorization: MediaBrowser Token=\"${access_token}\"" "$1"
 }
 
 api_post_json() {
     curl --fail --silent --request POST \
-        --header "X-Emby-Token: ${access_token}" \
+        --header "Authorization: MediaBrowser Token=\"${access_token}\"" \
         --header 'Content-Type: application/json' \
         --data "$2" \
         "$1"
@@ -102,7 +102,7 @@ series_original_tags="$(jq --compact-output --arg series_id "${series_id}" \
     '.Items[] | select(.Id == $series_id) | (.Tags // [])' <<<"${items}")"
 
 collection="$(curl --fail --silent --get --request POST \
-    --header "X-Emby-Token: ${access_token}" \
+    --header "Authorization: MediaBrowser Token=\"${access_token}\"" \
     --data-urlencode "name=${collection_name}" \
     "${server_url}/Collections")"
 collection_id="$(jq --raw-output .Id <<<"${collection}")"

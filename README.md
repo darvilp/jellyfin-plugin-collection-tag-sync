@@ -22,9 +22,20 @@ collection memberships.
 
 The plugin will not automatically convert every Jellyfin tag into a collection.
 
+## Compatibility
+
+Version `0.3.0.0` is built for Jellyfin 12.0.0 and
+.NET 10. Disposable-server runtime smoke tests passed; server-upgrade validation is pending. See the
+[Jellyfin 12 migration and handoff](docs/compatibility/jellyfin-12.md).
+
+Jellyfin 10.11/.NET 9 source is preserved on
+[legacy/jellyfin-10.11](https://github.com/darvilp/jellyfin-plugin-collection-tag-sync/tree/legacy/jellyfin-10.11).
+Existing release ZIPs and catalog entries remain unchanged.
+
 ## Alpha installation
 
-V1 targets Jellyfin 10.11.11 (`targetAbi` 10.11.11.0). In the Jellyfin
+Version 0.3.0.0 targets Jellyfin 12.0.0 (`targetAbi` 12.0.0.0).
+Jellyfin 10.11 users should keep version 0.2.0.0 from the same catalog. In the Jellyfin
 administrator dashboard:
 
 1. Open **Plugins → Repositories**.
@@ -35,14 +46,14 @@ administrator dashboard:
    ```
 
 3. Open **Catalog**, select **Collection Tag Sync**, and install version
-   `0.2.0.0`.
+   `0.3.0.0` on Jellyfin 12.
 4. Restart Jellyfin when prompted.
 5. Open **Dashboard → Plugins → Collection Tag Sync** to configure mappings or
    run one-time operations.
 
 Back up Jellyfin's configuration and data before alpha installation or upgrade.
 Uninstalling the plugin does not undo tag or collection metadata it previously
-synchronized. See the [current alpha release notes](docs/releases/v0.2.0.0-alpha.md)
+synchronized. See the [current alpha release notes](docs/releases/v0.3.0.0-alpha.md)
 for compatibility and known limitations.
 
 ## Documentation

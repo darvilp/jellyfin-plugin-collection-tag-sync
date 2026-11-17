@@ -51,11 +51,16 @@ else
 fi
 test "$(<"${override_identity_capture}")" = '3456:4567'
 
+compose_image="$(sed -n 's/^[[:space:]]*image: //p' "${project_root}/compose.yaml")"
+fixture_image="$(sed -n 's/^image="\(.*\)"$/\1/p' "${project_root}/scripts/test-env.sh")"
+test "${compose_image}" = "${fixture_image}"
+[[ "${compose_image}" =~ ^jellyfin/jellyfin:12\.0@sha256:[0-9a-f]{64}$ ]]
+
 version="$("${read_build_metadata}" version)"
-upgrade_from="$("${read_build_metadata}" upgradeFrom)"
+upgrade_from="$("${read_build_metadata}" upgradeFrom 2>/dev/null || true)"
 release_notes="${project_root}/docs/releases/v${version}-alpha.md"
 tag="v${version}"
-target_abi="10.11.11.0"
+target_abi="$("${read_build_metadata}" targetAbi)"
 asset_name="Jellyfin.Plugin.CollectionTagSync_${version}.zip"
 source_url="https://github.com/darvilp/jellyfin-plugin-collection-tag-sync/releases/download/${tag}/${asset_name}"
 source_ref_literal='ref: ${{ env.SOURCE_REF }}'
@@ -104,8 +109,10 @@ for heading in '## Compatibility' '## Included behavior' '## Configuration and u
     grep --fixed-strings "${heading}" "${release_notes}" >/dev/null
 done
 test -x "${project_root}/scripts/test-manifest-upgrade.sh"
-test "${upgrade_from}" != "${version}"
-test -f "${project_root}/docs/releases/v${upgrade_from}-alpha.md"
+if [[ -n "${upgrade_from}" ]]; then
+    test "${upgrade_from}" != "${version}"
+    test -f "${project_root}/docs/releases/v${upgrade_from}-alpha.md"
+fi
 shellcheck "${project_root}/scripts/test-manifest-upgrade.sh"
 if grep --extended-regexp --line-number '0\.1\.0\.0|10\.11\.11\.0' \
     "${project_root}/scripts/package.sh" \
@@ -170,6 +177,12 @@ make_package "${mismatched_version}" "${target_abi}" "${mismatched_package}"
 expect_failure \
     "Package version ${mismatched_version} does not match build.yaml version ${version}." \
     "${verify_release}" "${tag}" "${mismatched_package}"
+
+legacy_abi_package="${temp_root}/legacy-abi.zip"
+make_package "${version}" "10.11.11.0" "${legacy_abi_package}"
+expect_failure \
+    "Package targetAbi 10.11.11.0 does not match build.yaml targetAbi ${target_abi}." \
+    "${verify_release}" "${tag}" "${legacy_abi_package}"
 
 assets_dir="${temp_root}/assets"
 "${prepare_assets}" "${tag}" "${package_path}" "${assets_dir}"

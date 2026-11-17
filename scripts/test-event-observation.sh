@@ -16,7 +16,7 @@ access_token="$(<"${token_file}")"
 event_start="$(date -u +'%Y-%m-%dT%H:%M:%SZ')"
 
 api_get() {
-    curl --fail --silent --header "X-Emby-Token: ${access_token}" "$1"
+    curl --fail --silent --header "Authorization: MediaBrowser Token=\"${access_token}\"" "$1"
 }
 
 items="$(api_get "${server_url}/Items?Recursive=true&IncludeItemTypes=Movie,Series&Fields=Path,Tags")"
@@ -26,24 +26,24 @@ series_id="$(jq --raw-output '.Items[] | select(.Type == "Series") | .Id' <<<"${
 movie="$(api_get "${server_url}/Items/${movie_id}")"
 updated_movie="$(jq '.Tags = ["Kid-Approved"]' <<<"${movie}")"
 curl --fail --silent --request POST \
-    --header "X-Emby-Token: ${access_token}" \
+    --header "Authorization: MediaBrowser Token=\"${access_token}\"" \
     --header 'Content-Type: application/json' \
     --data "${updated_movie}" \
     "${server_url}/Items/${movie_id}"
 
 collection_name="Waltney Picks $(date -u +'%Y%m%d%H%M%S')"
 collection="$(curl --fail --silent --get --request POST \
-    --header "X-Emby-Token: ${access_token}" \
+    --header "Authorization: MediaBrowser Token=\"${access_token}\"" \
     --data-urlencode "name=${collection_name}" \
     --data-urlencode "ids=${movie_id}" \
     "${server_url}/Collections")"
 collection_id="$(jq --raw-output .Id <<<"${collection}")"
 
 curl --fail --silent --request POST \
-    --header "X-Emby-Token: ${access_token}" \
+    --header "Authorization: MediaBrowser Token=\"${access_token}\"" \
     "${server_url}/Collections/${collection_id}/Items?ids=${series_id}"
 curl --fail --silent --request DELETE \
-    --header "X-Emby-Token: ${access_token}" \
+    --header "Authorization: MediaBrowser Token=\"${access_token}\"" \
     "${server_url}/Collections/${collection_id}/Items?ids=${series_id}"
 
 persisted_movie="$(api_get "${server_url}/Items/${movie_id}")"

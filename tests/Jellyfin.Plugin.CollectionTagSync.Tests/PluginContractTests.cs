@@ -10,6 +10,8 @@ using PluginUnderTest = Jellyfin.Plugin.CollectionTagSync.Plugin;
 
 namespace Jellyfin.Plugin.CollectionTagSync.Tests;
 
+// Constructing a plugin replaces the process-wide Plugin.Instance.
+[Collection("Plugin singleton")]
 public sealed class PluginContractTests
 {
     [Fact]
