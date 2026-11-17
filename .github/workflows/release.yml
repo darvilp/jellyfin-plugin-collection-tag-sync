@@ -54,7 +54,7 @@ jobs:
           printf '%s\n' "${source_commit}" >release-bundle/source-commit.txt
           printf 'commit=%s\n' "${source_commit}" >>"${GITHUB_OUTPUT}"
 
-      - name: Set up .NET 9
+      - name: Set up .NET 10
         uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
         with:
           global-json-file: global.json
@@ -68,15 +68,15 @@ jobs:
       - name: Test
         run: |
           dotnet test Jellyfin.Plugin.CollectionTagSync.sln --configuration Release --no-build --no-restore --verbosity normal
-          node --check --experimental-default-type=module Jellyfin.Plugin.CollectionTagSync/Configuration/configPage.js
-          node --test --experimental-default-type=module tests/ui/configPage.test.js
+          node --check Jellyfin.Plugin.CollectionTagSync/Configuration/configPage.js
+          node --test tests/ui/configPage.test.js
           tests/release/release-tooling.test.sh
 
       - name: Build plugin package
         id: package
         uses: oddstr13/jellyfin-plugin-repository-manager@9497a0a499416cc572ed2e07a391d9f943a37b4d # v1.1.1
         with:
-          dotnet-target: net9.0
+          dotnet-target: net10.0
 
       - name: Prepare immutable assets
         id: assets
@@ -102,7 +102,7 @@ jobs:
           grep --fixed-strings '## Included behavior' "${notes_file}"
           grep --fixed-strings '## Configuration and upgrade notes' "${notes_file}"
           grep --fixed-strings '## Known limitations' "${notes_file}"
-          grep --fixed-strings '10.11.11' "${notes_file}"
+          grep --fixed-strings '12.0.0' "${notes_file}"
           install -m 0644 "${notes_file}" release-bundle/release-notes.md
 
       - name: Install pinned JPRM for manifest generation
@@ -248,7 +248,7 @@ jobs:
           grep --fixed-strings '## Included behavior' release-bundle/release-notes.md
           grep --fixed-strings '## Configuration and upgrade notes' release-bundle/release-notes.md
           grep --fixed-strings '## Known limitations' release-bundle/release-notes.md
-          grep --fixed-strings '10.11.11' release-bundle/release-notes.md
+          grep --fixed-strings '12.0.0' release-bundle/release-notes.md
 
       - name: Create or verify draft prerelease
         id: release

@@ -138,5 +138,5 @@ if [[ "${full_reconcile_state}" != "3" \
     exit 10
 fi
 
-printf 'Verified embedded administrator page/controller resources on Jellyfin 10.11.11.\n'
+printf 'Verified embedded administrator page/controller resources on Jellyfin 12.0.0.\n'
 printf 'Verified elevated tag/status support and background Full Reconcile queueing.\n'

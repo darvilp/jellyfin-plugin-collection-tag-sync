@@ -22,9 +22,19 @@ collection memberships.
 
 The plugin will not automatically convert every Jellyfin tag into a collection.
 
-## Alpha installation
+## Compatibility
 
-V1 targets Jellyfin 10.11.11 (`targetAbi` 10.11.11.0). In the Jellyfin
+This branch prepares the unreleased `0.3.0.0` build for Jellyfin 12.0.0 and
+.NET 10. Server runtime validation is pending. See the
+[Jellyfin 12 migration and handoff](docs/compatibility/jellyfin-12.md).
+
+Jellyfin 10.11/.NET 9 source is preserved on
+[legacy/jellyfin-10.11](https://github.com/darvilp/jellyfin-plugin-collection-tag-sync/tree/legacy/jellyfin-10.11).
+Existing release ZIPs and catalog entries remain unchanged.
+
+## Published alpha installation for Jellyfin 10.11
+
+Published version 0.2.0.0 targets Jellyfin 10.11.11 (`targetAbi` 10.11.11.0). In the Jellyfin
 administrator dashboard:
 
 1. Open **Plugins → Repositories**.

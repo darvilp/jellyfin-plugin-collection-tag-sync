@@ -2,7 +2,7 @@ name: collection-tag-sync-test
 
 services:
   jellyfin:
-    image: jellyfin/jellyfin:10.11.11
+    image: jellyfin/jellyfin:12.0.0
     container_name: collection-tag-sync-jellyfin
     user: "${JFTS_UID:-1000}:${JFTS_GID:-1000}"
     init: true

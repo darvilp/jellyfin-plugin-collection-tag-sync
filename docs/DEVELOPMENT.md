@@ -7,7 +7,7 @@ is deliberately separate from any Jellyfin installation running on Windows.
 
 - WSL 2 with systemd enabled
 - Docker Engine 29 or newer with the Compose plugin
-- .NET SDK 9
+- .NET SDK 10
 - `curl`, `git`, `jq`, Node.js 20 or newer, `python3`, and `python3-venv`
 - Docker access to `mcr.microsoft.com/playwright` for real-browser tests
 
@@ -43,9 +43,9 @@ bash scripts/dotnet.sh test Jellyfin.Plugin.CollectionTagSync.sln \
   --configuration Release \
   --no-build \
   --no-restore
-node --check --experimental-default-type=module \
+node --check \
   Jellyfin.Plugin.CollectionTagSync/Configuration/configPage.js
-node --test --experimental-default-type=module tests/ui/configPage.test.js
+node --test tests/ui/configPage.test.js
 tests/release/release-tooling.test.sh
 ```
 
@@ -127,5 +127,5 @@ tag runs the same validation, then creates a draft, uploads and verifies the
 immutable ZIP/SHA-256 pair, publishes the prerelease, and generates the
 `manifest` branch.
 
-See [Jellyfin 10.11.11 compatibility](compatibility/jellyfin-10.11.11.md) for
+See [Jellyfin 12 compatibility](compatibility/jellyfin-12.md) for
 the exact validated contract and known boundaries.
